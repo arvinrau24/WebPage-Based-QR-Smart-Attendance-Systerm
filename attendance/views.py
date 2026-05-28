@@ -349,10 +349,14 @@ def upload_timetable(request):
 
     for entry in sessions_data:
         try:
+            display_name = entry.get('course_name') or entry['course_code']
             course, _ = Course.objects.get_or_create(
                 code=entry['course_code'],
-                defaults={'name': entry['course_code'], 'lecturer': request.user}
+                defaults={'name': display_name, 'lecturer': request.user}
             )
+            if course.name != display_name:
+                course.name = display_name
+                course.save(update_fields=['name'])
             if course.lecturer != request.user:
                 course.lecturer = request.user
                 course.save()
@@ -590,7 +594,6 @@ def reset_semester(request):
     })
 
 
-from alerts.engine import check_and_trigger_alerts
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def finalize_session(request, session_id):
@@ -599,14 +602,13 @@ def finalize_session(request, session_id):
     except Session.DoesNotExist:
         return Response({'error': 'Session not found'}, status=404)
 
-    QRToken.objects.filter(session=session, is_active=True).update(is_active=False)
-    session.is_finalized = True
-    session.save()
     course = session.course
-    lecturer_email = request.user.email
 
-    if not lecturer_email:
-        lecturer_email = 'smartattendance.utem@gmail.com'
+    enrolled = StudentProfile.objects.filter(course=course)
+    if not enrolled.exists():
+        return Response({'error': 'No students enrolled in this course yet.'}, status=400)
+
+    QRToken.objects.filter(session=session, is_active=True).update(is_active=False)
 
     present_matrics = set(
         AttendanceRecord.objects.filter(
@@ -636,19 +638,21 @@ def finalize_session(request, session_id):
     for student in enrolled:
         before = Alert.objects.filter(
             course=course,
-            notes__icontains=student.matric_number
+            matric_number=student.matric_number,
+            is_sent=False,
         ).count()
 
-        check_and_trigger_alerts(student.matric_number, course, lecturer_email)
+        check_and_trigger_alerts(student.matric_number, course)
 
         after = Alert.objects.filter(
             course=course,
-            notes__icontains=student.matric_number
+            matric_number=student.matric_number,
+            is_sent=False,
         ).count()
 
         if after > before:
             alerts_triggered.append(student.matric_number)
-    
+
     session.is_finalized = True
     session.save()
 
@@ -657,6 +661,6 @@ def finalize_session(request, session_id):
         'present': present_count,
         'absent': absent_count,
         'total_enrolled': enrolled.count(),
-        'alerts_triggered': len(alerts_triggered),
-        'alerted_students': alerts_triggered
+        'alerts_pending_review': len(alerts_triggered),
+        'alerted_students': alerts_triggered,
     })

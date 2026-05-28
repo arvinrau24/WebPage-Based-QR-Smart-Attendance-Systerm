@@ -356,7 +356,38 @@ const S = {
     padding: "12px 14px",
     marginBottom: "10px",
     background: type === "bar" ? "#faece7" : "#faeeda",
+    cursor: "pointer",
+    transition: "box-shadow 0.15s ease",
   }),
+  alertOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(26,25,23,0.45)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+    padding: "24px",
+  },
+  alertModal: {
+    background: "#fff",
+    borderRadius: "12px",
+    width: "100%",
+    maxWidth: "520px",
+    maxHeight: "90vh",
+    overflow: "auto",
+    boxShadow: "0 24px 48px rgba(0,0,0,0.18)",
+  },
+  missedRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "10px 12px",
+    background: "#faf9f7",
+    borderRadius: "8px",
+    marginBottom: "8px",
+    fontSize: "13px",
+  },
 
   // Misc
   divider: {
@@ -443,6 +474,11 @@ export default function LecturerDashboard() {
   const [sessionMsg, setSessionMsg] = useState("");
   const [studentListMsg, setStudentListMsg] = useState("");
   const [finalizeMsg, setFinalizeMsg] = useState({});
+  const [selectedAlert, setSelectedAlert] = useState(null);
+  const [alertSendLoading, setAlertSendLoading] = useState(false);
+  const [alertActionMsg, setAlertActionMsg] = useState("");
+
+  const pendingAlerts = alerts.filter((a) => !a.is_sent);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -450,7 +486,12 @@ export default function LecturerDashboard() {
       navigate("/login");
       return;
     }
-    setUser(JSON.parse(stored));
+    const parsed = JSON.parse(stored);
+    if (parsed.role !== "lecturer") {
+      navigate("/login");
+      return;
+    }
+    setUser(parsed);
     fetchCourses();
     fetchAlerts();
     fetchTodaySessions();
@@ -488,6 +529,51 @@ export default function LecturerDashboard() {
   const fetchAlerts = async () => {
     const r = await api.get("/alerts/");
     setAlerts(r.data);
+  };
+
+  const openAlertDetail = async (alert) => {
+    setAlertActionMsg("");
+    try {
+      const r = await api.get(`/alerts/${alert.id}/`);
+      setSelectedAlert(r.data);
+    } catch {
+      setSelectedAlert(alert);
+    }
+  };
+
+  const closeAlertModal = () => {
+    setSelectedAlert(null);
+    setAlertActionMsg("");
+  };
+
+  const sendAlertToStudent = async () => {
+    if (!selectedAlert || selectedAlert.is_sent) return;
+    setAlertSendLoading(true);
+    setAlertActionMsg("");
+    try {
+      const r = await api.post(`/alerts/${selectedAlert.id}/send/`);
+      setAlertActionMsg(r.data.message);
+      await fetchAlerts();
+      const updated = await api.get(`/alerts/${selectedAlert.id}/`);
+      setSelectedAlert(updated.data);
+    } catch (err) {
+      setAlertActionMsg(err.response?.data?.error || "Failed to send email");
+    } finally {
+      setAlertSendLoading(false);
+    }
+  };
+
+  const formatSessionDate = (dateStr) => {
+    try {
+      return new Date(dateStr).toLocaleDateString("en-MY", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
   };
   const fetchTodaySessions = async () => {
     const r = await api.get("/sessions/today/");
@@ -586,18 +672,28 @@ export default function LecturerDashboard() {
     );
   };
 
+  const resetTimetableFileInput = (inputEl) => {
+    if (inputEl) inputEl.value = "";
+    setTimetableKey((p) => p + 1);
+  };
+
   const uploadTimetable = async (e) => {
-    const file = e.target.files[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
+
     if (!semesterStart) {
       setTimetableMsg("Enter semester start date first.");
+      resetTimetableFileInput(input);
       return;
     }
+
     setUploading(true);
     setTimetableMsg("");
     const fd = new FormData();
     fd.append("image", file);
     fd.append("semester_start", semesterStart);
+
     try {
       const r = await api.post("/upload-timetable/", fd, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -605,11 +701,14 @@ export default function LecturerDashboard() {
       setTimetableMsg(r.data.message);
       fetchCourses();
       fetchTodaySessions();
-    } catch {
-      setTimetableMsg("Failed to parse timetable.");
+    } catch (err) {
+      setTimetableMsg(
+        err.response?.data?.error || "Failed to parse timetable.",
+      );
+    } finally {
+      setUploading(false);
+      resetTimetableFileInput(input);
     }
-    setUploading(false);
-    setTimetableKey((p) => p + 1);
   };
 
   const uploadStudentList = async (e, courseId) => {
@@ -653,7 +752,7 @@ export default function LecturerDashboard() {
       const r = await api.post(`/sessions/${sessionId}/finalize/`);
       setFinalizeMsg((p) => ({
         ...p,
-        [sessionId]: `${r.data.present} present, ${r.data.absent} absent. ${r.data.alerts_triggered} alert(s).`,
+        [sessionId]: `${r.data.present} present, ${r.data.absent} absent. ${r.data.alerts_pending_review || 0} alert(s) pending your review.`,
       }));
       setQrImage(null);
       setQrToken(null);
@@ -900,10 +999,11 @@ export default function LecturerDashboard() {
                 </div>
                 <div style={S.stat}>
                   <p style={S.statLabel}>Alerts</p>
-                  <p style={S.statValue}>{alerts.length}</p>
+                  <p style={S.statValue}>{pendingAlerts.length}</p>
                   <p style={S.statSub}>
-                    {alerts.filter((a) => a.alert_type === "bar").length} bar
-                    letters
+                    {pendingAlerts.length} pending review
+                    {alerts.filter((a) => a.is_sent).length > 0 &&
+                      ` · ${alerts.filter((a) => a.is_sent).length} sent`}
                   </p>
                 </div>
               </div>
@@ -1118,45 +1218,65 @@ export default function LecturerDashboard() {
                 </div>
               )}
 
-              {/* Alerts */}
+              {/* Alerts — review before emailing students */}
               {alerts.length > 0 && (
                 <div style={S.panel}>
                   <div style={S.panelHeader}>
-                    <p style={S.panelTitle}>⚠️ Alerts</p>
-                    <span style={S.badge("red")}>{alerts.length}</span>
+                    <p style={S.panelTitle}>⚠️ Attendance alerts</p>
+                    <span style={S.badge("red")}>{pendingAlerts.length} pending</span>
                   </div>
                   <div style={S.panelBody}>
+                    <p style={{ fontSize: "13px", color: "#6b6963", margin: "0 0 12px" }}>
+                      Click an alert to review missed classes, then send the email to the
+                      student (from smartattendance.utem@gmail.com).
+                    </p>
                     {alerts.map((a) => (
-                      <div key={a.id} style={S.alertCard(a.alert_type)}>
+                      <div
+                        key={a.id}
+                        role="button"
+                        tabIndex={0}
+                        style={S.alertCard(a.alert_type)}
+                        onClick={() => openAlertDetail(a)}
+                        onKeyDown={(e) => e.key === "Enter" && openAlertDetail(a)}
+                      >
                         <div
                           style={{
                             display: "flex",
                             alignItems: "center",
+                            justifyContent: "space-between",
                             gap: "8px",
-                            marginBottom: "4px",
+                            marginBottom: "6px",
                           }}
                         >
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span
+                              style={S.badge(
+                                a.alert_type === "bar" ? "red" : "amber",
+                              )}
+                            >
+                              {a.alert_type === "bar" ? "Bar" : "Warning"}
+                            </span>
+                            <span style={{ fontSize: "12px", color: "#6b6963" }}>
+                              {a.course_code || `Course #${a.course}`}
+                            </span>
+                          </div>
                           <span
-                            style={S.badge(
-                              a.alert_type === "bar" ? "red" : "amber",
-                            )}
+                            style={S.badge(a.is_sent ? "green" : "amber")}
                           >
-                            {a.alert_type === "bar"
-                              ? "Bar Letter"
-                              : "Warning Letter"}
-                          </span>
-                          <span style={{ fontSize: "12px", color: "#6b6963" }}>
-                            Course {a.course}
+                            {a.is_sent ? "Sent" : "Review"}
                           </span>
                         </div>
-                        <p
-                          style={{
-                            fontSize: "13px",
-                            margin: 0,
-                            color: "#1a1917",
-                          }}
-                        >
-                          {a.notes}
+                        <p style={{ fontSize: "14px", fontWeight: 600, margin: "0 0 4px" }}>
+                          {a.student_name || a.matric_number}
+                        </p>
+                        <p style={{ fontSize: "12px", margin: 0, color: "#6b6963" }}>
+                          {a.reason_label}
+                          {a.consecutive_count
+                            ? ` · ${a.consecutive_count} in a row`
+                            : ""}
+                          {a.attendance_percentage != null
+                            ? ` · ${a.attendance_percentage}% attendance`
+                            : ""}
                         </p>
                       </div>
                     ))}
@@ -1947,6 +2067,154 @@ export default function LecturerDashboard() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alert detail modal */}
+      {selectedAlert && (
+        <div style={S.alertOverlay} onClick={closeAlertModal}>
+          <div
+            style={S.alertModal}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={S.modalHeader}>
+              <p style={S.modalTitle}>
+                {selectedAlert.alert_type === "bar"
+                  ? "Bar letter"
+                  : "Warning letter"}{" "}
+                — {selectedAlert.course_code}
+              </p>
+              <button
+                type="button"
+                style={S.btn("ghost")}
+                onClick={closeAlertModal}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={S.modalBody}>
+              <div style={{ marginBottom: "16px" }}>
+                <p style={{ fontSize: "16px", fontWeight: 600, margin: "0 0 4px" }}>
+                  {selectedAlert.student_name}
+                </p>
+                <p style={{ fontSize: "13px", color: "#6b6963", margin: 0 }}>
+                  {selectedAlert.matric_number}
+                  {selectedAlert.student_email
+                    ? ` · ${selectedAlert.student_email}`
+                    : " · No email on file"}
+                </p>
+              </div>
+
+              <div style={S.grid3}>
+                <div style={{ ...S.stat, padding: "12px" }}>
+                  <p style={S.statLabel}>Subject</p>
+                  <p style={{ ...S.statValue, fontSize: "15px" }}>
+                    {selectedAlert.course_code}
+                  </p>
+                  <p style={S.statSub}>{selectedAlert.course_name}</p>
+                </div>
+                <div style={{ ...S.stat, padding: "12px" }}>
+                  <p style={S.statLabel}>Issue</p>
+                  <p style={{ ...S.statValue, fontSize: "14px" }}>
+                    {selectedAlert.reason_label}
+                  </p>
+                </div>
+                <div style={{ ...S.stat, padding: "12px" }}>
+                  <p style={S.statLabel}>Status</p>
+                  <p style={{ ...S.statValue, fontSize: "14px" }}>
+                    {selectedAlert.is_sent ? "Email sent" : "Pending review"}
+                  </p>
+                </div>
+              </div>
+
+              {selectedAlert.consecutive_count > 0 && (
+                <p style={{ fontSize: "13px", margin: "16px 0 8px" }}>
+                  Missed{" "}
+                  <strong>{selectedAlert.consecutive_count}</strong> consecutive
+                  class(es)
+                </p>
+              )}
+              {selectedAlert.attendance_percentage != null && (
+                <p style={{ fontSize: "13px", margin: "16px 0 8px" }}>
+                  Overall attendance:{" "}
+                  <strong>{selectedAlert.attendance_percentage}%</strong> (below
+                  80% required)
+                </p>
+              )}
+
+              {(selectedAlert.missed_sessions?.length > 0) && (
+                <>
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "#4a4845",
+                      margin: "12px 0 8px",
+                    }}
+                  >
+                    Classes not attended
+                  </p>
+                  {selectedAlert.missed_sessions.map((s) => (
+                    <div key={s.session_id || `${s.date}-${s.start_time}`} style={S.missedRow}>
+                      <span>{formatSessionDate(s.date)}</span>
+                      <span style={{ color: "#6b6963" }}>
+                        {s.start_time} – {s.end_time}
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {alertActionMsg && (
+                <p
+                  style={{
+                    fontSize: "13px",
+                    marginTop: "12px",
+                    color: alertActionMsg.includes("sent")
+                      ? "#2d6a4f"
+                      : "#c13515",
+                  }}
+                >
+                  {alertActionMsg}
+                </p>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  justifyContent: "flex-end",
+                  marginTop: "20px",
+                }}
+              >
+                <button
+                  type="button"
+                  style={S.btn("secondary")}
+                  onClick={closeAlertModal}
+                >
+                  Close
+                </button>
+                {!selectedAlert.is_sent && (
+                  <button
+                    type="button"
+                    style={S.btn("primary")}
+                    disabled={alertSendLoading || !selectedAlert.student_email}
+                    onClick={sendAlertToStudent}
+                  >
+                    {alertSendLoading
+                      ? "Sending…"
+                      : "Send email to student"}
+                  </button>
+                )}
+              </div>
+              {!selectedAlert.student_email && !selectedAlert.is_sent && (
+                <p style={{ fontSize: "12px", color: "#c13515", marginTop: "8px" }}>
+                  Add the student&apos;s email via the student list upload or edit
+                  student details.
+                </p>
+              )}
             </div>
           </div>
         </div>

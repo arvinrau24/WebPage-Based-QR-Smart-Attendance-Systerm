@@ -3,8 +3,8 @@ from django.conf import settings
 import uuid
 
 class Course(models.Model):
-    name = models.CharField(max_length=100)
-    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=150)
+    code = models.CharField(max_length=50, unique=True)
     section = models.CharField(max_length=20, blank=True, null=True)
     lecturer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
