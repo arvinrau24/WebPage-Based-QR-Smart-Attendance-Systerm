@@ -5,6 +5,7 @@ import uuid
 class Course(models.Model):
     name = models.CharField(max_length=100)
     code = models.CharField(max_length=20, unique=True)
+    section = models.CharField(max_length=20, blank=True, null=True)
     lecturer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -26,6 +27,7 @@ class Session(models.Model):
     start_time = models.TimeField()
     end_time = models.TimeField()
     created_at = models.DateTimeField(auto_now_add=True)
+    is_finalized = models.BooleanField(default=False)  # ADD THIS
 
     def __str__(self):
         return f"{self.course.code} - {self.date}"

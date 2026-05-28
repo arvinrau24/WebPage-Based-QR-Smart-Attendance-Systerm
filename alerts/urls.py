@@ -1,9 +1,7 @@
-from django.contrib import admin
-from django.urls import path, include
+from django.urls import path
+from . import views
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/auth/', include('accounts.urls')),
-    path('api/', include('attendance.urls')),
-    path('api/', include('alerts.urls')),
+    path('alerts/', views.alert_list),
+    path('courses/<int:course_id>/run-alerts/', views.run_alert_check),
 ]

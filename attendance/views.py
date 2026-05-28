@@ -1,32 +1,31 @@
-from multiprocessing.managers import Token
-from tkinter.font import Font
-from tkinter.font import Font
-
-import openpyxl
-import openpyxl
-from django.http import HttpResponse
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-from django.utils import timezone
-from datetime import timedelta
-import qrcode
-import uuid
+import datetime
 import io
 import base64
+import uuid
 import os
 
-import datetime
-
-from .models import Course, Session, QRToken, AttendanceRecord
-from .serializers import CourseSerializer, SessionSerializer, QRTokenSerializer, AttendanceRecordSerializer
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
-
-from .timetable_parser import parse_timetable_image
+from django.http import HttpResponse
+from django.utils import timezone
 from django.contrib.auth import get_user_model
+from django.db import transaction
 
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.authtoken.models import Token
+
+import qrcode
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
+from datetime import timedelta
+
+from .models import Course, Session, QRToken, AttendanceRecord, StudentProfile
+from .serializers import CourseSerializer, SessionSerializer, QRTokenSerializer, AttendanceRecordSerializer
+from .timetable_parser import parse_timetable_image
+from .student_list_parser import parse_student_list
 from alerts.models import Alert
+from alerts.engine import check_and_trigger_alerts
 
 User = get_user_model()
 
@@ -57,7 +56,7 @@ def add_student_manual(request, course_id):
     except Course.DoesNotExist:
         return Response({'error': 'Course not found'}, status=404)
 
-    matric_number = request.data.get('matric_number', '').strip()
+    matric_number = request.data.get('matric_number', '').strip().upper()
     full_name = request.data.get('full_name', '').strip()
     phone = request.data.get('phone', '').strip()
     email = request.data.get('email', '').strip()
@@ -65,28 +64,27 @@ def add_student_manual(request, course_id):
     if not matric_number or not full_name:
         return Response({'error': 'Matric number and full name are required'}, status=400)
 
-    if StudentProfile.objects.filter(course=course, matric_number=matric_number).exists():
-        return Response({'error': f'{matric_number} is already enrolled'}, status=400)
-
-    student = StudentProfile.objects.create(
+    student, created = StudentProfile.objects.update_or_create(
         course=course,
         matric_number=matric_number,
-        full_name=full_name,
-        phone=phone,
-        email=email,
-        section='',
+        defaults={
+            'full_name': full_name,
+            'phone': phone,
+            'email': email,
+        }
     )
 
     return Response({
-        'message': f'Student {matric_number} added successfully',
+        'message': f'Student {matric_number} {"added" if created else "updated"} successfully',
         'student': {
             'id': student.id,
             'matric_number': student.matric_number,
             'full_name': student.full_name,
-            'phone': student.phone,
-            'email': student.email,
+            'phone': student.phone or '',
+            'email': student.email or '',
+            'section': student.section or '',
         }
-    }, status=201)
+    }, status=201 if created else 200)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -187,8 +185,8 @@ def session_list(request, course_id):
         return Response({'error': 'Course not found'}, status=404)
 
     if request.method == 'GET':
-        sessions = Session.objects.filter(course=course)
-        return Response(SessionSerializer(sessions, many=True).data)
+        course_sessions = Session.objects.filter(course=course, is_finalized=False)
+        return Response(SessionSerializer(course_sessions, many=True).data)
 
     if request.method == 'POST':
         serializer = SessionSerializer(data=request.data)
@@ -259,25 +257,33 @@ def mark_attendance(request):
         qr_token.save()
         return Response({'error': 'QR code has expired. Please scan the latest code.'}, status=400)
 
-    # GPS verification — UTeM FTKEK coordinates
+    session = qr_token.session
+    course = session.course
+
+    # Check if matric is enrolled in this course
+    profile = StudentProfile.objects.filter(
+        course=course,
+        matric_number=matric_number
+    ).first()
+
+    if not profile:
+        return Response({'error': f'Matric number {matric_number} is not enrolled in this course.'}, status=400)
+
+    # GPS verification
     gps_verified = False
     if latitude and longitude:
         from math import radians, sin, cos, sqrt, atan2
         building_lat = 2.3132493083489556
         building_lng = 102.31827936415627
-        R = 6371000  # Earth radius in meters
+        R = 6371000
 
         lat1, lon1 = radians(building_lat), radians(building_lng)
         lat2, lon2 = radians(float(latitude)), radians(float(longitude))
         dlat = lat2 - lat1
         dlon = lon2 - lon1
-
         a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
         distance = R * 2 * atan2(sqrt(a), sqrt(1-a))
-
-        gps_verified = distance <= 50  # 50 meter radius
-
-    session = qr_token.session
+        gps_verified = distance <= 50
 
     # Check if already marked
     if AttendanceRecord.objects.filter(session=session, matric_number=matric_number).exists():
@@ -285,7 +291,7 @@ def mark_attendance(request):
 
     AttendanceRecord.objects.create(
         session=session,
-        full_name=full_name,
+        full_name=profile.full_name,  # use the name from StudentProfile, not self-reported
         matric_number=matric_number,
         status='present',
         scanned_at=timezone.now(),
@@ -298,6 +304,8 @@ def mark_attendance(request):
         return Response({'message': f'Attendance marked successfully! ✅'}, status=201)
     else:
         return Response({'message': f'Attendance marked ⚠️ but GPS could not verify your location.'}, status=201)
+
+
 
 # ---  live attendance view ---
 @api_view(['GET'])
@@ -315,7 +323,6 @@ def upload_timetable(request):
     if 'image' not in request.FILES:
         return Response({'error': 'No image uploaded'}, status=400)
 
-    # Get semester start date from request
     semester_start_str = request.data.get('semester_start')
     if not semester_start_str:
         return Response({'error': 'Semester start date is required'}, status=400)
@@ -327,7 +334,6 @@ def upload_timetable(request):
 
     image_file = request.FILES['image']
     image_bytes = image_file.read()
-    image_type = image_file.content_type.split('/')[-1]
 
     try:
         sessions_data = parse_timetable_image(image_bytes, image_file.content_type)
@@ -338,19 +344,14 @@ def upload_timetable(request):
         'Monday': 0, 'Tuesday': 1, 'Wednesday': 2,
         'Thursday': 3, 'Friday': 4
     }
-
     created_count = 0
     TOTAL_WEEKS = 14
 
     for entry in sessions_data:
-        print("PROCESSING ENTRY:", entry)
         try:
             course, _ = Course.objects.get_or_create(
                 code=entry['course_code'],
-                defaults={
-                    'name': entry['course_code'],
-                    'lecturer': request.user
-                }
+                defaults={'name': entry['course_code'], 'lecturer': request.user}
             )
             if course.lecturer != request.user:
                 course.lecturer = request.user
@@ -362,7 +363,7 @@ def upload_timetable(request):
 
             for week in range(TOTAL_WEEKS):
                 session_date = first_session + datetime.timedelta(weeks=week)
-                session, created_new = Session.objects.get_or_create(
+                _, created_new = Session.objects.get_or_create(
                     course=course,
                     date=session_date,
                     start_time=entry['start_time'] + ':00',
@@ -370,35 +371,11 @@ def upload_timetable(request):
                 )
                 if created_new:
                     created_count += 1
-
         except Exception as e:
             print(f"ERROR on entry {entry}: {e}")
             continue
-        if course.lecturer != request.user:
-            course.lecturer = request.user
-            course.save()
 
-        target_weekday = day_map.get(entry['day'], 0)
-
-        # Find first occurrence from semester start
-        days_ahead = (target_weekday - semester_start.weekday()) % 7
-        first_session = semester_start + datetime.timedelta(days=days_ahead)
-
-        # Generate 14 weekly sessions
-        for week in range(TOTAL_WEEKS):
-            session_date = first_session + datetime.timedelta(weeks=week)
-            session, created_new = Session.objects.get_or_create(
-                course=course,
-                date=session_date,
-                start_time=entry['start_time'] + ':00',
-                end_time=entry['end_time'] + ':00',
-            )
-            if created_new:
-                created_count += 1
-
-    return Response({
-        'message': f'{created_count} sessions created across 14 weeks.',
-    })
+    return Response({'message': f'{created_count} sessions created across 14 weeks.'})
 
 # --- DELETE COURSE ---
 @api_view(['DELETE'])
@@ -430,7 +407,11 @@ def delete_session(request, session_id):
 def todays_sessions(request):
     today = datetime.date.today()
     courses = Course.objects.filter(lecturer=request.user)
-    sessions = Session.objects.filter(course__in=courses, date=today)
+    sessions = Session.objects.filter(
+        course__in=courses,
+        date=today,
+        is_finalized=False
+    )
     return Response(SessionSerializer(sessions, many=True).data)
 
 # --- EDIT COURSE ---
@@ -571,7 +552,6 @@ def upload_student_list(request, course_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_student_list(request, course_id):
-
     try:
         course = Course.objects.get(id=course_id, lecturer=request.user)
     except Course.DoesNotExist:
@@ -580,15 +560,18 @@ def get_student_list(request, course_id):
     students = StudentProfile.objects.filter(course=course).order_by('section', 'full_name')
     data = [
         {
+            'id': s.id,
             'matric_number': s.matric_number,
             'full_name': s.full_name,
-            'section': s.section,
-            'email': s.email,
-            'phone': s.phone,
+            'section': s.section or '',
+            'email': s.email or '',
+            'phone': s.phone or '',
         }
         for s in students
     ]
     return Response({'course': course.code, 'total': len(data), 'students': data})
+
+
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
@@ -616,18 +599,15 @@ def finalize_session(request, session_id):
     except Session.DoesNotExist:
         return Response({'error': 'Session not found'}, status=404)
 
+    QRToken.objects.filter(session=session, is_active=True).update(is_active=False)
+    session.is_finalized = True
+    session.save()
     course = session.course
     lecturer_email = request.user.email
 
     if not lecturer_email:
-        return Response({'error': 'Lecturer email not set'}, status=400)
+        lecturer_email = 'smartattendance.utem@gmail.com'
 
-    # Get all enrolled students
-    enrolled = StudentProfile.objects.filter(course=course)
-    if not enrolled.exists():
-        return Response({'error': 'No students enrolled in this course yet.'}, status=400)
-
-    # Get students who already scanned (present)
     present_matrics = set(
         AttendanceRecord.objects.filter(
             session=session, status='present'
@@ -637,7 +617,6 @@ def finalize_session(request, session_id):
     absent_count = 0
     present_count = len(present_matrics)
 
-    # Mark absent for students who didn't scan
     for student in enrolled:
         if student.matric_number not in present_matrics:
             _, created = AttendanceRecord.objects.get_or_create(
@@ -653,7 +632,6 @@ def finalize_session(request, session_id):
             if created:
                 absent_count += 1
 
-    # Run alert checks for all enrolled students
     alerts_triggered = []
     for student in enrolled:
         before = Alert.objects.filter(
@@ -670,9 +648,12 @@ def finalize_session(request, session_id):
 
         if after > before:
             alerts_triggered.append(student.matric_number)
+    
+    session.is_finalized = True
+    session.save()
 
     return Response({
-        'message': f'Session finalized.',
+        'message': 'Session finalized.',
         'present': present_count,
         'absent': absent_count,
         'total_enrolled': enrolled.count(),

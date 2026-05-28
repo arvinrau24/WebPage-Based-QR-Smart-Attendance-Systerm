@@ -6,6 +6,7 @@ from .serializers import AlertSerializer
 from attendance.models import Course, Session, AttendanceRecord
 from django.contrib.auth import get_user_model
 from .engine import check_and_trigger_alerts
+from attendance.models import Course, Session, AttendanceRecord, StudentProfile
 
 User = get_user_model()
 
@@ -22,7 +23,6 @@ def alert_list(request):
 
     return Response(AlertSerializer(alerts, many=True).data)
 
-from attendance.models import Course, Session, AttendanceRecord, StudentProfile
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def run_alert_check(request, course_id):

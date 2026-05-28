@@ -2,60 +2,447 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 
+const S = {
+  // Layout
+  page: {
+    minHeight: "100vh",
+    background: "#f8f7f4",
+    fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
+    color: "#1a1917",
+  },
+  topbar: {
+    background: "#fff",
+    borderBottom: "1px solid #e8e6e1",
+    padding: "0 2rem",
+    height: "60px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    position: "sticky",
+    top: 0,
+    zIndex: 100,
+  },
+  logo: {
+    fontWeight: 700,
+    fontSize: "16px",
+    letterSpacing: "-0.3px",
+    color: "#1a1917",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  topbarRight: { display: "flex", alignItems: "center", gap: "12px" },
+  userPill: {
+    fontSize: "13px",
+    color: "#6b6963",
+    background: "#f3f2ef",
+    padding: "4px 12px",
+    borderRadius: "20px",
+  },
+  body: { display: "flex", minHeight: "calc(100vh - 60px)" },
+
+  // Sidebar
+  sidebar: {
+    width: "260px",
+    background: "#fff",
+    borderRight: "1px solid #e8e6e1",
+    padding: "1.5rem 0",
+    flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
+  sideSection: { marginBottom: "1.5rem" },
+  sideLabel: {
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "#a09d97",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    padding: "0 1.25rem",
+    marginBottom: "4px",
+  },
+  courseItem: (active) => ({
+    padding: "9px 1.25rem",
+    cursor: "pointer",
+    fontSize: "13.5px",
+    fontWeight: active ? 600 : 400,
+    color: active ? "#1a1917" : "#4a4845",
+    background: active ? "#f3f2ef" : "transparent",
+    borderRight: active ? "2px solid #1a1917" : "2px solid transparent",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    transition: "background 0.15s",
+  }),
+  courseCode: {
+    fontSize: "11px",
+    background: "#f3f2ef",
+    color: "#6b6963",
+    padding: "2px 7px",
+    borderRadius: "4px",
+    fontWeight: 500,
+  },
+  addCourseBtn: {
+    margin: "0 1.25rem",
+    padding: "8px",
+    border: "1px dashed #d0cec9",
+    borderRadius: "8px",
+    background: "transparent",
+    color: "#6b6963",
+    fontSize: "13px",
+    cursor: "pointer",
+    width: "calc(100% - 2.5rem)",
+    textAlign: "center",
+    transition: "all 0.15s",
+  },
+  sideFooter: { marginTop: "auto", padding: "1.25rem" },
+
+  // Main area
+  main: { flex: 1, padding: "2rem", overflowY: "auto" },
+  pageHeader: { marginBottom: "1.5rem" },
+  pageTitle: {
+    fontSize: "22px",
+    fontWeight: 700,
+    margin: 0,
+    letterSpacing: "-0.4px",
+  },
+  pageSubtitle: { fontSize: "13px", color: "#6b6963", margin: "2px 0 0" },
+
+  // Cards / panels
+  panel: {
+    background: "#fff",
+    border: "1px solid #e8e6e1",
+    borderRadius: "12px",
+    marginBottom: "1.5rem",
+    overflow: "hidden",
+  },
+  panelHeader: {
+    padding: "1rem 1.25rem",
+    borderBottom: "1px solid #f0eeea",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  panelTitle: { fontSize: "14px", fontWeight: 600, margin: 0 },
+  panelBody: { padding: "1.25rem" },
+
+  // Grid
+  grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" },
+  grid3: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: "1rem",
+  },
+
+  // Stat cards
+  stat: {
+    background: "#f8f7f4",
+    borderRadius: "10px",
+    padding: "1rem",
+    border: "1px solid #eeece8",
+  },
+  statLabel: { fontSize: "12px", color: "#6b6963", marginBottom: "6px" },
+  statValue: { fontSize: "28px", fontWeight: 700, letterSpacing: "-0.5px" },
+  statSub: { fontSize: "12px", color: "#a09d97", marginTop: "2px" },
+
+  // Today sessions
+  sessionCard: {
+    border: "1px solid #e8e6e1",
+    borderRadius: "10px",
+    padding: "1rem 1.25rem",
+    marginBottom: "10px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    background: "#fff",
+  },
+  sessionInfo: { flex: 1 },
+  sessionCourse: { fontSize: "14px", fontWeight: 600 },
+  sessionTime: { fontSize: "12px", color: "#6b6963", marginTop: "2px" },
+  sessionActions: { display: "flex", gap: "8px" },
+
+  // QR box
+  qrPanel: {
+    background: "#fff",
+    border: "1px solid #e8e6e1",
+    borderRadius: "12px",
+    padding: "1.5rem",
+    textAlign: "center",
+    marginBottom: "1.5rem",
+  },
+  countdown: (urgent) => ({
+    fontSize: "52px",
+    fontWeight: 800,
+    letterSpacing: "-2px",
+    color: urgent ? "#d85a30" : "#1a1917",
+    fontVariantNumeric: "tabular-nums",
+    lineHeight: 1,
+    marginBottom: "4px",
+  }),
+
+  // Student table
+  table: { width: "100%", borderCollapse: "collapse", fontSize: "13px" },
+  th: {
+    padding: "8px 12px",
+    textAlign: "left",
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "#6b6963",
+    letterSpacing: "0.05em",
+    textTransform: "uppercase",
+    borderBottom: "1px solid #eeece8",
+    background: "#faf9f7",
+  },
+  td: {
+    padding: "10px 12px",
+    borderBottom: "1px solid #f3f2ef",
+    verticalAlign: "middle",
+  },
+  trHover: { background: "#faf9f7" },
+
+  // Buttons
+  btn: (variant = "primary") =>
+    ({
+      primary: {
+        background: "#1a1917",
+        color: "#fff",
+        border: "none",
+        padding: "8px 16px",
+        borderRadius: "8px",
+        fontSize: "13px",
+        fontWeight: 500,
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+      },
+      secondary: {
+        background: "#fff",
+        color: "#1a1917",
+        border: "1px solid #d0cec9",
+        padding: "8px 16px",
+        borderRadius: "8px",
+        fontSize: "13px",
+        fontWeight: 500,
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+      },
+      danger: {
+        background: "#fff0ee",
+        color: "#c13515",
+        border: "1px solid #fac4b3",
+        padding: "6px 12px",
+        borderRadius: "6px",
+        fontSize: "12px",
+        cursor: "pointer",
+      },
+      ghost: {
+        background: "transparent",
+        color: "#6b6963",
+        border: "none",
+        padding: "6px 10px",
+        borderRadius: "6px",
+        fontSize: "12px",
+        cursor: "pointer",
+      },
+      green: {
+        background: "#27500a",
+        color: "#fff",
+        border: "none",
+        padding: "8px 16px",
+        borderRadius: "8px",
+        fontSize: "13px",
+        fontWeight: 500,
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+      },
+      red: {
+        background: "#a32d2d",
+        color: "#fff",
+        border: "none",
+        padding: "8px 16px",
+        borderRadius: "8px",
+        fontSize: "13px",
+        fontWeight: 500,
+        cursor: "pointer",
+      },
+    })[variant],
+
+  // Form
+  formRow: { marginBottom: "12px" },
+  label: {
+    display: "block",
+    fontSize: "12px",
+    fontWeight: 500,
+    color: "#6b6963",
+    marginBottom: "4px",
+  },
+  input: {
+    width: "100%",
+    padding: "8px 12px",
+    border: "1px solid #d0cec9",
+    borderRadius: "8px",
+    fontSize: "13px",
+    background: "#fff",
+    color: "#1a1917",
+    boxSizing: "border-box",
+    outline: "none",
+  },
+
+  // Badge
+  badge: (color) => ({
+    display: "inline-block",
+    padding: "2px 8px",
+    borderRadius: "4px",
+    fontSize: "11px",
+    fontWeight: 500,
+    background:
+      color === "green"
+        ? "#eaf3de"
+        : color === "red"
+          ? "#fcebeb"
+          : color === "amber"
+            ? "#faeeda"
+            : "#f3f2ef",
+    color:
+      color === "green"
+        ? "#3b6d11"
+        : color === "red"
+          ? "#a32d2d"
+          : color === "amber"
+            ? "#854f0b"
+            : "#5f5e5a",
+  }),
+
+  // Modal overlay
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.35)",
+    zIndex: 200,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "1rem",
+  },
+  modal: {
+    background: "#fff",
+    borderRadius: "14px",
+    width: "100%",
+    maxWidth: "480px",
+    maxHeight: "80vh",
+    overflow: "auto",
+    boxShadow: "0 8px 40px rgba(0,0,0,0.12)",
+  },
+  modalHeader: {
+    padding: "1.25rem 1.5rem",
+    borderBottom: "1px solid #f0eeea",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  modalTitle: { fontSize: "15px", fontWeight: 600, margin: 0 },
+  modalBody: { padding: "1.5rem" },
+
+  // Alerts
+  alertCard: (type) => ({
+    border: `1px solid ${type === "bar" ? "#fac4b3" : "#fac775"}`,
+    borderLeft: `4px solid ${type === "bar" ? "#d85a30" : "#ef9f27"}`,
+    borderRadius: "8px",
+    padding: "12px 14px",
+    marginBottom: "10px",
+    background: type === "bar" ? "#faece7" : "#faeeda",
+  }),
+
+  // Misc
+  divider: {
+    border: "none",
+    borderTop: "1px solid #f0eeea",
+    margin: "1rem 0",
+  },
+  empty: {
+    color: "#a09d97",
+    fontSize: "13px",
+    fontStyle: "italic",
+    padding: "1rem 0",
+  },
+  tag: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    background: "#f3f2ef",
+    borderRadius: "6px",
+    padding: "3px 8px",
+    fontSize: "12px",
+    color: "#4a4845",
+  },
+};
+
 export default function LecturerDashboard() {
-  const [timetableKey, setTimetableKey] = useState(0);
-  const [studentListKey, setStudentListKey] = useState(0);
-  const [studentListMsg, setStudentListMsg] = useState("");
-  const [uploadingStudents, setUploadingStudents] = useState(false);
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
+
+  // Data
   const [courses, setCourses] = useState([]);
   const [alerts, setAlerts] = useState([]);
-  const [selectedCourse, setSelectedCourse] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [todaySessions, setTodaySessions] = useState([]);
+  const [studentList, setStudentList] = useState([]);
+
+  // UI state
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [activeTab, setActiveTab] = useState("overview"); // overview | sessions | students | alerts
+  const [showAddCourseForm, setShowAddCourseForm] = useState(false);
+  const [showAddSession, setShowAddSession] = useState(false);
+  const [showAllSessions, setShowAllSessions] = useState(false);
+  const [showStudents, setShowStudents] = useState(false);
+
+  // Student modal
+  const [studentModal, setStudentModal] = useState(false);
+  const [editingStudent, setEditingStudent] = useState(null); // null = add mode, object = edit mode
+  const [studentForm, setStudentForm] = useState({
+    matric_number: "",
+    full_name: "",
+    section: "",
+    phone: "",
+    email: "",
+  });
+
+  // QR
   const [qrImage, setQrImage] = useState(null);
   const [qrToken, setQrToken] = useState(null);
   const [qrInterval, setQrInterval] = useState(null);
   const [qrCountdown, setQrCountdown] = useState(180);
-  const [timetableMsg, setTimetableMsg] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [semesterStart, setSemesterStart] = useState("");
-  const [showAllSessions, setShowAllSessions] = useState(false);
-  const [editingCourse, setEditingCourse] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", code: "" });
-  const [showAddSession, setShowAddSession] = useState(false);
-  const [newSession, setNewSession] = useState({
-    date: "",
-    start_time: "",
-    end_time: "",
-  });
+  const [countSessionId, setCountSessionId] = useState(null);
+  const [attendanceCount, setAttendanceCount] = useState(0);
 
-  const [showAddCourseForm, setShowAddCourseForm] = useState(false);
+  // Forms
   const [newCourse, setNewCourse] = useState({
     code: "",
     name: "",
     section: "",
   });
-
-  const [newStudent, setNewStudent] = useState({
-    matric_number: "",
-    full_name: "",
-    phone: "",
-    email: "",
+  const [editingCourse, setEditingCourse] = useState(null);
+  const [editForm, setEditForm] = useState({ name: "", code: "" });
+  const [newSession, setNewSession] = useState({
+    date: "",
+    start_time: "",
+    end_time: "",
   });
+  const [semesterStart, setSemesterStart] = useState("");
+  const [timetableKey, setTimetableKey] = useState(0);
+  const [studentListKey, setStudentListKey] = useState(0);
 
+  // Messages
+  const [timetableMsg, setTimetableMsg] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [sessionMsg, setSessionMsg] = useState("");
-  const [attendanceCount, setAttendanceCount] = useState(0);
-  const [countSessionId, setCountSessionId] = useState(null);
-  const navigate = useNavigate();
-  const [studentList, setStudentList] = useState([]);
-  const [showStudents, setShowStudents] = useState(false);
+  const [studentListMsg, setStudentListMsg] = useState("");
   const [finalizeMsg, setFinalizeMsg] = useState({});
-  const [showStudentModal, setShowStudentModal] = useState(false);
-  const [selectedCourseForStudents, setSelectedCourseForStudents] =
-    useState(null);
-  const [enrolledStudents, setEnrolledStudents] = useState([]);
-  const [showAddStudentForm, setShowAddStudentForm] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -72,77 +459,80 @@ export default function LecturerDashboard() {
   useEffect(() => {
     if (!qrImage) return;
     setQrCountdown(180);
-    const timer = setInterval(() => {
-      setQrCountdown((prev) => {
-        if (prev <= 1) return 180;
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
+    const t = setInterval(
+      () => setQrCountdown((p) => (p <= 1 ? 180 : p - 1)),
+      1000,
+    );
+    return () => clearInterval(t);
   }, [qrImage]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      setTodaySessions((prev) =>
+        prev.filter((s) => {
+          const [h, m] = s.end_time.split(":").map(Number);
+          const end = new Date();
+          end.setHours(h, m, 0, 0);
+          return now < end;
+        }),
+      );
+    }, 60000); // check every minute
+    return () => clearInterval(interval);
+  }, []);
+
   const fetchCourses = async () => {
-    const res = await api.get("/courses/");
-    setCourses(res.data);
+    const r = await api.get("/courses/");
+    setCourses(r.data);
   };
-
   const fetchAlerts = async () => {
-    const res = await api.get("/alerts/");
-    setAlerts(res.data);
+    const r = await api.get("/alerts/");
+    setAlerts(r.data);
   };
-
   const fetchTodaySessions = async () => {
-    const res = await api.get("/sessions/today/");
-    setTodaySessions(res.data);
+    const r = await api.get("/sessions/today/");
+    setTodaySessions(r.data);
   };
-
-  const fetchAttendanceCount = async (sessionId) => {
-    const res = await api.get(`/sessions/${sessionId}/attendance/`);
-    setAttendanceCount(res.data.length);
-    setCountSessionId(sessionId);
+  const fetchAttendanceCount = async (sid) => {
+    const r = await api.get(`/sessions/${sid}/attendance/`);
+    setAttendanceCount(r.data.length);
   };
 
   const selectCourse = async (course) => {
     setSelectedCourse(course);
     setQrImage(null);
     setQrToken(null);
-    setShowStudents(false);
-    setStudentList([]);
-    setStudentListMsg("");
     if (qrInterval) clearInterval(qrInterval);
-    const res = await api.get(`/courses/${course.id}/sessions/`);
-    setSessions(res.data);
+    const r = await api.get(`/courses/${course.id}/sessions/`);
+    setSessions(r.data);
     fetchStudentList(course.id);
+    setActiveTab("overview");
   };
 
-  const deleteCourse = async (courseId) => {
+  const fetchStudentList = async (courseId) => {
+    const r = await api.get(`/courses/${courseId}/students/`);
+    setStudentList(r.data.students || []);
+  };
+
+  const deleteCourse = async (id) => {
     if (!window.confirm("Delete this course and all its sessions?")) return;
-    await api.delete(`/courses/${courseId}/delete/`);
+    await api.delete(`/courses/${id}/delete/`);
     setSelectedCourse(null);
     setSessions([]);
+    setStudentList([]);
     fetchCourses();
     fetchTodaySessions();
   };
 
-  const deleteSession = async (sessionId) => {
-    if (!window.confirm("Delete this session?")) return;
-    await api.delete(`/sessions/${sessionId}/delete/`);
-    if (selectedCourse) {
-      const res = await api.get(`/courses/${selectedCourse.id}/sessions/`);
-      setSessions(res.data);
-    }
-    fetchTodaySessions();
-  };
-
-  const saveEditCourse = async (courseId) => {
-    await api.patch(`/courses/${courseId}/edit/`, editForm);
+  const saveEditCourse = async (id) => {
+    await api.patch(`/courses/${id}/edit/`, editForm);
     setEditingCourse(null);
     fetchCourses();
   };
 
   const createSession = async () => {
     if (!newSession.date || !newSession.start_time || !newSession.end_time) {
-      setSessionMsg("Please fill in all fields");
+      setSessionMsg("Fill all fields");
       return;
     }
     try {
@@ -153,34 +543,39 @@ export default function LecturerDashboard() {
       });
       setSessionMsg("Session added!");
       setNewSession({ date: "", start_time: "", end_time: "" });
-      const res = await api.get(`/courses/${selectedCourse.id}/sessions/`);
-      setSessions(res.data);
+      const r = await api.get(`/courses/${selectedCourse.id}/sessions/`);
+      setSessions(r.data);
       fetchTodaySessions();
     } catch {
       setSessionMsg("Failed to add session.");
     }
   };
 
+  const deleteSession = async (id) => {
+    if (!window.confirm("Delete this session?")) return;
+    await api.delete(`/sessions/${id}/delete/`);
+    if (selectedCourse) {
+      const r = await api.get(`/courses/${selectedCourse.id}/sessions/`);
+      setSessions(r.data);
+    }
+    fetchTodaySessions();
+  };
+
   const startQR = (sessionId) => {
     if (qrInterval) clearInterval(qrInterval);
     setAttendanceCount(0);
     setCountSessionId(sessionId);
-
     const generate = async () => {
-      const res = await api.post(`/sessions/${sessionId}/generate-qr/`);
-      setQrImage(res.data.qr_image);
-      setQrToken(res.data.token);
+      const r = await api.post(`/sessions/${sessionId}/generate-qr/`);
+      setQrImage(r.data.qr_image);
+      setQrToken(r.data.token);
     };
     generate();
-    const interval = setInterval(generate, 180000);
-    setQrInterval(interval);
-
+    const iv = setInterval(generate, 180000);
+    setQrInterval(iv);
     fetchAttendanceCount(sessionId);
-    const countInterval = setInterval(
-      () => fetchAttendanceCount(sessionId),
-      10000,
-    );
-    setQrInterval(countInterval);
+    const cv = setInterval(() => fetchAttendanceCount(sessionId), 10000);
+    setQrInterval(cv);
   };
 
   const exportExcel = (sessionId) => {
@@ -195,78 +590,181 @@ export default function LecturerDashboard() {
     const file = e.target.files[0];
     if (!file) return;
     if (!semesterStart) {
-      setTimetableMsg("Please enter the semester start date first.");
+      setTimetableMsg("Enter semester start date first.");
       return;
     }
     setUploading(true);
     setTimetableMsg("");
-    const formData = new FormData();
-    formData.append("image", file);
-    formData.append("semester_start", semesterStart);
+    const fd = new FormData();
+    fd.append("image", file);
+    fd.append("semester_start", semesterStart);
     try {
-      const res = await api.post("/upload-timetable/", formData, {
+      const r = await api.post("/upload-timetable/", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setTimetableMsg(res.data.message);
+      setTimetableMsg(r.data.message);
       fetchCourses();
       fetchTodaySessions();
     } catch {
       setTimetableMsg("Failed to parse timetable.");
     }
     setUploading(false);
-    setTimetableKey((prev) => prev + 1);
+    setTimetableKey((p) => p + 1);
   };
 
   const uploadStudentList = async (e, courseId) => {
     const file = e.target.files[0];
     if (!file) return;
-    setStudentListMsg("⏳ Importing...");
-    const formData = new FormData();
-    formData.append("file", file);
+    setStudentListMsg("Importing...");
+    const fd = new FormData();
+    fd.append("file", file);
     try {
-      const res = await api.post(
-        `/courses/${courseId}/upload-students/`,
-        formData,
-        {
-          headers: { "Content-Type": "multipart/form-data" },
-        },
-      );
-      setStudentListMsg(
-        `✅ ${res.data.message} (${res.data.sections.join(", ")})`,
-      );
+      const r = await api.post(`/courses/${courseId}/upload-students/`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setStudentListMsg(`Imported: ${r.data.sections?.join(", ")}`);
       fetchStudentList(courseId);
     } catch {
-      setStudentListMsg("❌ Failed to upload.");
+      setStudentListMsg("Failed to upload.");
     }
-    setStudentListKey((prev) => prev + 1);
+    setStudentListKey((p) => p + 1);
   };
 
-  const fetchStudentList = async (courseId) => {
-    const res = await api.get(`/courses/${courseId}/students/`);
-    setStudentList(res.data.students);
-    setShowStudents(true);
+  const handleCreateCourse = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post("/courses/create/", newCourse);
+      setNewCourse({ code: "", name: "", section: "" });
+      setShowAddCourseForm(false);
+      fetchCourses();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to create course");
+    }
+  };
+
+  const finalizeSession = async (sessionId) => {
+    if (
+      !window.confirm(
+        "Finalize session? Absent records will be created for students who didn't scan.",
+      )
+    )
+      return;
+    try {
+      const r = await api.post(`/sessions/${sessionId}/finalize/`);
+      setFinalizeMsg((p) => ({
+        ...p,
+        [sessionId]: `${r.data.present} present, ${r.data.absent} absent. ${r.data.alerts_triggered} alert(s).`,
+      }));
+      setQrImage(null);
+      setQrToken(null);
+      setCountSessionId(null);
+      setAttendanceCount(0);
+      if (qrInterval) {
+        clearInterval(qrInterval);
+        setQrInterval(null);
+      }
+      // Refresh session lists so finalized session disappears
+      fetchTodaySessions();
+      if (selectedCourse) {
+        const res = await api.get(`/courses/${selectedCourse.id}/sessions/`);
+        setSessions(res.data);
+      }
+      fetchAlerts();
+    } catch (err) {
+      setFinalizeMsg((p) => ({
+        ...p,
+        [sessionId]: err.response?.data?.error || "Failed.",
+      }));
+    }
+  };
+
+  // ── Student CRUD ──
+  const openAddStudent = () => {
+    setEditingStudent(null);
+    setStudentForm({
+      matric_number: "",
+      full_name: "",
+      section: "",
+      phone: "",
+      email: "",
+    });
+    setStudentModal(true);
+  };
+
+  const openEditStudent = (s) => {
+    setEditingStudent(s);
+    setStudentForm({
+      matric_number: s.matric_number,
+      full_name: s.full_name,
+      section: s.section || "",
+      phone: s.phone || "",
+      email: s.email || "",
+    });
+    setStudentModal(true);
+  };
+
+  const saveStudent = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post(
+        `/courses/${selectedCourse.id}/students/add/`,
+        studentForm,
+      );
+      setStudentModal(false);
+      fetchStudentList(selectedCourse.id);
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to save student");
+    }
+  };
+
+  const deleteStudent = async (student) => {
+    if (
+      !window.confirm(`Remove ${student.matric_number} — ${student.full_name}?`)
+    )
+      return;
+    try {
+      await api.delete(
+        `/courses/${selectedCourse.id}/students/${student.id}/remove/`,
+      );
+      fetchStudentList(selectedCourse.id);
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to remove student");
+    }
+  };
+
+  const clearAllStudents = async () => {
+    if (
+      !window.confirm(
+        "Remove ALL students from this course? This cannot be undone.",
+      )
+    )
+      return;
+    try {
+      await api.delete(`/courses/${selectedCourse.id}/students/clear/`);
+      fetchStudentList(selectedCourse.id);
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed");
+    }
   };
 
   const resetSemester = async () => {
     if (
       !window.confirm(
-        "⚠️ This will DELETE all courses, sessions, attendance records and enrolled students. Are you sure?",
+        "Delete ALL courses, sessions, and attendance? This cannot be undone.",
       )
     )
       return;
-    if (!window.confirm("Are you absolutely sure? This cannot be undone!"))
-      return;
+    if (!window.confirm("Are you absolutely sure?")) return;
     try {
-      const res = await api.delete("/reset-semester/");
-      alert(res.data.message);
-      fetchCourses();
-      fetchTodaySessions();
+      await api.delete("/reset-semester/");
       setSelectedCourse(null);
       setSessions([]);
       setStudentList([]);
       setQrImage(null);
+      fetchCourses();
+      fetchTodaySessions();
     } catch {
-      alert("Failed to reset semester.");
+      alert("Failed to reset.");
     }
   };
 
@@ -284,711 +782,1175 @@ export default function LecturerDashboard() {
     month: "long",
     day: "numeric",
   });
+  const upcomingSessions = sessions.filter(
+    (s) =>
+      showAllSessions ||
+      new Date(s.date) >= new Date(new Date().toDateString()),
+  );
 
-  const finalizeSession = async (sessionId) => {
-    if (
-      !window.confirm(
-        "Finalize this session? Absent records will be created for students who did not scan.",
-      )
-    )
-      return;
-    try {
-      const res = await api.post(`/sessions/${sessionId}/finalize/`);
-      setFinalizeMsg((prev) => ({
-        ...prev,
-        [sessionId]: `✅ ${res.data.present} present, ${res.data.absent} absent out of ${res.data.total_enrolled}. ${res.data.alerts_triggered} alert(s) sent.`,
-      }));
-      fetchAttendanceCount(sessionId);
-      fetchAlerts();
-    } catch (err) {
-      setFinalizeMsg((prev) => ({
-        ...prev,
-        [sessionId]: `❌ ${err.response?.data?.error || "Failed to finalize."}`,
-      }));
-    }
-  };
-
-  // ========== COURSE MANAGEMENT ==========
-
-  const handleCreateCourse = async (e) => {
-    e.preventDefault();
-    try {
-      const response = await api.post("/api/courses/create/", newCourse);
-      alert("✅ " + response.data.message);
-      setNewCourse({ code: "", name: "", section: "" });
-      setShowAddCourseForm(false);
-      fetchCourses(); // Refresh list
-    } catch (error) {
-      alert("❌ " + (error.response?.data?.error || "Failed to create course"));
-    }
-  };
-
-  // ========== STUDENT ENROLLMENT MANAGEMENT ==========
-
-  const fetchEnrolledStudents = async (courseId) => {
-    try {
-      const response = await api.get(`/api/courses/${courseId}/students/`);
-      setEnrolledStudents(response.data.students);
-      setSelectedCourseForStudents(response.data.course);
-      setShowStudentModal(true);
-    } catch (error) {
-      alert("❌ Failed to fetch students");
-    }
-  };
-
-  const handleAddStudent = async (e) => {
-    e.preventDefault();
-    try {
-      const response = await api.post(
-        `/api/courses/${selectedCourseForStudents.id}/students/add/`,
-        newStudent,
-      );
-      alert("✅ " + response.data.message);
-      setNewStudent({ matric_number: "", full_name: "", phone: "", email: "" });
-      setShowAddStudentForm(false);
-      fetchEnrolledStudents(selectedCourseForStudents.id); // Refresh list
-    } catch (error) {
-      alert("❌ " + (error.response?.data?.error || "Failed to add student"));
-    }
-  };
-
-  const handleRemoveStudent = async (studentId, matricNumber) => {
-    if (!confirm(`Remove ${matricNumber} from this course?`)) return;
-
-    try {
-      const response = await api.delete(
-        `/api/courses/${selectedCourseForStudents.id}/students/${studentId}/remove/`,
-      );
-      alert("✅ " + response.data.message);
-      fetchEnrolledStudents(selectedCourseForStudents.id); // Refresh list
-    } catch (error) {
-      alert(
-        "❌ " + (error.response?.data?.error || "Failed to remove student"),
-      );
-    }
-  };
-
-  const handleClearAllEnrollments = async () => {
-    if (
-      !confirm(
-        "⚠️ Delete ALL student enrollments from this course?\n\nThis cannot be undone!",
-      )
-    )
-      return;
-
-    try {
-      const response = await api.delete(
-        `/api/courses/${selectedCourseForStudents.id}/students/clear/`,
-      );
-      alert("✅ " + response.data.message);
-      fetchEnrolledStudents(selectedCourseForStudents.id); // Refresh list
-    } catch (error) {
-      alert(
-        "❌ " + (error.response?.data?.error || "Failed to clear enrollments"),
-      );
-    }
-  };
+  const Tab = ({ id, label }) => (
+    <button
+      onClick={() => setActiveTab(id)}
+      style={{
+        padding: "7px 14px",
+        border: "none",
+        cursor: "pointer",
+        fontSize: "13px",
+        fontWeight: activeTab === id ? 600 : 400,
+        color: activeTab === id ? "#1a1917" : "#6b6963",
+        background: "transparent",
+        borderBottom:
+          activeTab === id ? "2px solid #1a1917" : "2px solid transparent",
+        marginBottom: "-1px",
+      }}
+    >
+      {label}
+    </button>
+  );
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <div>
-          <h2 style={{ margin: 0 }}>👨‍🏫 Lecturer Dashboard</h2>
-          <p style={{ margin: 0, fontSize: "13px", color: "#888" }}>{today}</p>
+    <div style={S.page}>
+      {/* ── Topbar ── */}
+      <div style={S.topbar}>
+        <div style={S.logo}>
+          <span style={{ fontSize: "20px" }}>◈</span>
+          Smart Attendance
         </div>
-        <div style={{ display: "flex", gap: "8px" }}>
+        <div style={S.topbarRight}>
+          <span style={S.userPill}>👨‍🏫 {user?.username}</span>
+          <span style={{ fontSize: "12px", color: "#a09d97" }}>{today}</span>
           <button
             onClick={resetSemester}
-            style={{
-              ...styles.logoutBtn,
-              background: "#dc2626",
-              fontSize: "12px",
-            }}
+            style={{ ...S.btn("ghost"), color: "#c13515", fontSize: "12px" }}
           >
-            🗑️ Reset Semester
+            Reset Semester
           </button>
-          <button onClick={logout} style={styles.logoutBtn}>
-            Logout
+          <button onClick={logout} style={S.btn("primary")}>
+            Log out
           </button>
         </div>
       </div>
-      {/* Timetable Upload */}
-      <div style={styles.section}>
-        <h3>📤 Import Timetable</h3>
-        <p style={{ color: "#888", fontSize: "13px" }}>
-          Enter semester start date then upload your timetable — 14 weeks of
-          sessions will be created automatically.
-        </p>
-        <input
-          style={styles.input}
-          type="date"
-          value={semesterStart}
-          onChange={(e) => setSemesterStart(e.target.value)}
-        />
-        <input
-          type="file"
-          key={timetableKey}
-          accept="image/*,.pdf,.docx,.doc"
-          onChange={uploadTimetable}
-        />
-        {uploading && (
-          <p style={{ color: "#4f46e5" }}>⏳ Reading timetable...</p>
-        )}
-        {timetableMsg && (
-          <p
-            style={{ color: timetableMsg.includes("Failed") ? "red" : "green" }}
-          >
-            {timetableMsg}
-          </p>
-        )}
-      </div>
 
-      {/* Today's Sessions */}
-      <div style={styles.section}>
-        <h3>📅 Today's Sessions</h3>
-        {todaySessions.length === 0 ? (
-          <p style={styles.empty}>No classes scheduled for today.</p>
-        ) : (
-          todaySessions.map((session) => (
-            <div key={session.id} style={styles.todayCard}>
-              <div>
-                <b>
-                  {courses.find((c) => c.id === session.course)?.code ||
-                    `Course ${session.course}`}
-                </b>
-                <span style={{ marginLeft: "8px", color: "#666" }}>
-                  {session.start_time} - {session.end_time}
-                </span>
-                {finalizeMsg[session.id] && (
-                  <p
-                    style={{
-                      margin: "4px 0 0",
-                      fontSize: "12px",
-                      color: finalizeMsg[session.id].includes("❌")
-                        ? "red"
-                        : "green",
-                    }}
-                  >
-                    {finalizeMsg[session.id]}
-                  </p>
-                )}
-              </div>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  style={styles.qrBtn}
-                  onClick={() => startQR(session.id)}
-                >
-                  📱 Generate QR
-                </button>
-                <button
-                  style={{ ...styles.qrBtn, background: "#16a34a" }}
-                  onClick={() => finalizeSession(session.id)}
-                >
-                  ✅ Finalize
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/*ADD COURSE SECTION */}
-      <div className="add-course-section">
-        <h2>Courses</h2>
-        <button onClick={() => setShowAddCourseForm(!showAddCourseForm)}>
-          ➕ Add Course Manually
-        </button>
-
-        {showAddCourseForm && (
-          <form onSubmit={handleCreateCourse} className="add-course-form">
-            <input
-              type="text"
-              placeholder="Course Code (e.g., BITM3233)"
-              value={newCourse.code}
-              onChange={(e) =>
-                setNewCourse({ ...newCourse, code: e.target.value })
-              }
-              required
-            />
-            <input
-              type="text"
-              placeholder="Course Name"
-              value={newCourse.name}
-              onChange={(e) =>
-                setNewCourse({ ...newCourse, name: e.target.value })
-              }
-              required
-            />
-            <input
-              type="text"
-              placeholder="Section (optional, e.g., 1/1)"
-              value={newCourse.section}
-              onChange={(e) =>
-                setNewCourse({ ...newCourse, section: e.target.value })
-              }
-            />
-            <div>
-              <button type="submit">Create Course</button>
-              <button type="button" onClick={() => setShowAddCourseForm(false)}>
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-
-
-
-      {/* QR Code */}
-      {qrImage && (
-        <div style={styles.qrBox}>
-          <h3>📱 Active QR Code</h3>
-          <div
-            style={{
-              fontSize: "48px",
-              fontWeight: "bold",
-              color: qrCountdown <= 10 ? "#ef4444" : "#4f46e5",
-              letterSpacing: "2px",
-              marginBottom: "8px",
-            }}
-          >
-            {String(Math.floor(qrCountdown / 60)).padStart(2, "0")}:
-            {String(qrCountdown % 60).padStart(2, "0")}
-          </div>
-          <p style={styles.hint}>QR refreshes every 3 minutes</p>
-          <img src={qrImage} alt="QR Code" style={styles.qr} />
-          <p style={{ fontSize: "12px", color: "#888", marginTop: "8px" }}>
-            Token:{" "}
-            <code
-              style={{
-                background: "#f0f0f0",
-                padding: "2px 6px",
-                borderRadius: "4px",
-              }}
-            >
-              {qrToken}
-            </code>
-          </p>
-          <button
-            onClick={() => exportExcel(countSessionId)}
-            style={{ ...styles.btn, marginTop: "12px", background: "#16a34a" }}
-          >
-            📥 Download Attendance Excel
-          </button>
-        </div>
-      )}
-
-      {/* Attendance Count */}
-      {countSessionId && (
-        <div
-          style={{
-            textAlign: "center",
-            margin: "1rem 0",
-            padding: "1rem",
-            background: "#f0fdf4",
-            borderRadius: "12px",
-            border: "1px solid #bbf7d0",
-          }}
-        >
-          <span
-            style={{ fontSize: "32px", fontWeight: "bold", color: "#16a34a" }}
-          >
-            {attendanceCount}
-          </span>
-          <p style={{ margin: "4px 0 0", color: "#666", fontSize: "14px" }}>
-            students marked attendance
-          </p>
-        </div>
-      )}
-
-      {/* Course List */}
-      <div style={styles.section}>
-        <h3>📚 My Courses</h3>
-        {courses.length === 0 && <p style={styles.empty}>No courses yet.</p>}
-        {courses.map((course) => (
-          <div
-            key={course.id}
-            style={{
-              ...styles.card,
-              background:
-                selectedCourse?.id === course.id ? "#ede9fe" : "#f9f9f9",
-            }}
-          >
-            {editingCourse === course.id ? (
-              <div>
-                <input
-                  style={styles.input}
-                  value={editForm.code}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, code: e.target.value })
-                  }
-                  placeholder="Course Code"
-                />
-                <input
-                  style={styles.input}
-                  value={editForm.name}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, name: e.target.value })
-                  }
-                  placeholder="Course Name"
-                />
-                <button
-                  style={styles.btn}
-                  onClick={() => saveEditCourse(course.id)}
-                >
-                  Save
-                </button>
-                <button
-                  style={{ ...styles.deleteBtn, marginLeft: "8px" }}
-                  onClick={() => setEditingCourse(null)}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
+      <div style={S.body}>
+        {/* ── Sidebar ── */}
+        <div style={S.sidebar}>
+          <div style={S.sideSection}>
+            <p style={S.sideLabel}>My Courses</p>
+            {courses.length === 0 && (
+              <p style={{ ...S.empty, padding: "0 1.25rem", fontSize: "12px" }}>
+                No courses yet
+              </p>
+            )}
+            {courses.map((c) => (
               <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
+                key={c.id}
+                style={S.courseItem(selectedCourse?.id === c.id)}
+                onClick={() => selectCourse(c)}
               >
                 <span
-                  onClick={() => selectCourse(course)}
-                  style={{ cursor: "pointer", flex: 1 }}
-                >
-                  <b>{course.code}</b> — {course.name}
-                </span>
-                <button
-                  onClick={() => {
-                    setEditingCourse(course.id);
-                    setEditForm({ name: course.name, code: course.code });
+                  style={{
+                    flex: 1,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
-                  style={{ ...styles.deleteBtn, marginRight: "6px" }}
                 >
-                  ✏️
-                </button>
-                <button
-                  onClick={() => deleteCourse(course.id)}
-                  style={styles.deleteBtn}
-                >
-                  🗑️
-                </button>
+                  {c.name}
+                </span>
+                <span style={S.courseCode}>{c.code}</span>
               </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Sessions */}
-      {selectedCourse && (
-        <div style={styles.section}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <h3>🗓️ Sessions — {selectedCourse.code}</h3>
-            <button
-              style={styles.toggleBtn}
-              onClick={() => setShowAllSessions(!showAllSessions)}
-            >
-              {showAllSessions ? "Show Upcoming Only" : "Show All 14 Weeks"}
-            </button>
+            ))}
           </div>
 
           <button
-            style={{ ...styles.toggleBtn, marginBottom: "1rem" }}
-            onClick={() => setShowAddSession(!showAddSession)}
+            style={S.addCourseBtn}
+            onClick={() => setShowAddCourseForm(true)}
           >
-            {showAddSession ? "Cancel" : "➕ Add Session Manually"}
+            + Add course
           </button>
 
-          {showAddSession && (
-            <div
-              style={{
-                background: "#f9f9f9",
-                padding: "1rem",
-                borderRadius: "8px",
-                marginBottom: "1rem",
-              }}
-            >
-              <input
-                style={styles.input}
-                type="date"
-                value={newSession.date}
-                onChange={(e) =>
-                  setNewSession({ ...newSession, date: e.target.value })
-                }
-              />
-              <input
-                style={styles.input}
-                type="time"
-                value={newSession.start_time}
-                onChange={(e) =>
-                  setNewSession({ ...newSession, start_time: e.target.value })
-                }
-              />
-              <input
-                style={styles.input}
-                type="time"
-                value={newSession.end_time}
-                onChange={(e) =>
-                  setNewSession({ ...newSession, end_time: e.target.value })
-                }
-              />
-              <button style={styles.btn} onClick={createSession}>
-                Add Session
-              </button>
-              {sessionMsg && (
-                <p
-                  style={{
-                    color: sessionMsg.includes("Failed") ? "red" : "green",
-                    fontSize: "13px",
-                  }}
-                >
-                  {sessionMsg}
+          <div style={S.sideFooter}>
+            <p style={{ fontSize: "11px", color: "#c0bdb8", margin: 0 }}>
+              UTeM Smart Attendance v2
+            </p>
+          </div>
+        </div>
+
+        {/* ── Main ── */}
+        <div style={S.main}>
+          {/* ── Overview when no course selected ── */}
+          {!selectedCourse && (
+            <>
+              <div style={S.pageHeader}>
+                <h1 style={S.pageTitle}>Dashboard</h1>
+                <p style={S.pageSubtitle}>
+                  Overview of today's schedule and system status
                 </p>
+              </div>
+
+              {/* Stats row */}
+              <div style={S.grid3}>
+                <div style={S.stat}>
+                  <p style={S.statLabel}>Total Courses</p>
+                  <p style={S.statValue}>{courses.length}</p>
+                </div>
+                <div style={S.stat}>
+                  <p style={S.statLabel}>Today's Sessions</p>
+                  <p style={S.statValue}>{todaySessions.length}</p>
+                </div>
+                <div style={S.stat}>
+                  <p style={S.statLabel}>Alerts</p>
+                  <p style={S.statValue}>{alerts.length}</p>
+                  <p style={S.statSub}>
+                    {alerts.filter((a) => a.alert_type === "bar").length} bar
+                    letters
+                  </p>
+                </div>
+              </div>
+
+              <hr style={S.divider} />
+
+              {/* Timetable import */}
+              <div style={S.panel}>
+                <div style={S.panelHeader}>
+                  <p style={S.panelTitle}>📤 Import Timetable</p>
+                </div>
+                <div style={S.panelBody}>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#6b6963",
+                      margin: "0 0 12px",
+                    }}
+                  >
+                    Upload your timetable image/PDF — AI will extract all
+                    courses and create 14 weeks of sessions.
+                  </p>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "10px",
+                      alignItems: "flex-end",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={S.formRow}>
+                      <label style={S.label}>Semester start date</label>
+                      <input
+                        style={{ ...S.input, width: "160px" }}
+                        type="date"
+                        value={semesterStart}
+                        onChange={(e) => setSemesterStart(e.target.value)}
+                      />
+                    </div>
+                    <div style={S.formRow}>
+                      <label style={S.label}>Timetable file</label>
+                      <input
+                        key={timetableKey}
+                        type="file"
+                        accept="image/*,.pdf,.docx,.doc"
+                        onChange={uploadTimetable}
+                        style={{ fontSize: "13px", color: "#4a4845" }}
+                      />
+                    </div>
+                  </div>
+                  {uploading && (
+                    <p
+                      style={{
+                        color: "#185fa5",
+                        fontSize: "13px",
+                        margin: "8px 0 0",
+                      }}
+                    >
+                      ⏳ Reading timetable with AI...
+                    </p>
+                  )}
+                  {timetableMsg && (
+                    <p
+                      style={{
+                        color: timetableMsg.includes("Failed")
+                          ? "#a32d2d"
+                          : "#3b6d11",
+                        fontSize: "13px",
+                        margin: "8px 0 0",
+                      }}
+                    >
+                      {timetableMsg}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Today's sessions */}
+              <div style={S.panel}>
+                <div style={S.panelHeader}>
+                  <p style={S.panelTitle}>📅 Today's Sessions</p>
+                  <span style={S.badge("green")}>
+                    {todaySessions.length} scheduled
+                  </span>
+                </div>
+                <div style={S.panelBody}>
+                  {todaySessions.length === 0 ? (
+                    <p style={S.empty}>No classes scheduled for today.</p>
+                  ) : (
+                    todaySessions.map((session) => (
+                      <div key={session.id} style={S.sessionCard}>
+                        <div style={S.sessionInfo}>
+                          <p style={S.sessionCourse}>
+                            {courses.find((c) => c.id === session.course)
+                              ?.code || `Course ${session.course}`}
+                          </p>
+                          <p style={S.sessionTime}>
+                            {session.start_time} – {session.end_time}
+                          </p>
+                          {finalizeMsg[session.id] && (
+                            <p
+                              style={{
+                                fontSize: "12px",
+                                color: "#3b6d11",
+                                margin: "4px 0 0",
+                              }}
+                            >
+                              {finalizeMsg[session.id]}
+                            </p>
+                          )}
+                        </div>
+                        <div style={S.sessionActions}>
+                          <button
+                            style={S.btn("secondary")}
+                            onClick={() => startQR(session.id)}
+                          >
+                            📱 Generate QR
+                          </button>
+                          <button
+                            style={S.btn("green")}
+                            onClick={() => finalizeSession(session.id)}
+                          >
+                            ✅ Finalize
+                          </button>
+                          <button
+                            style={S.btn("ghost")}
+                            onClick={() => exportExcel(session.id)}
+                          >
+                            📥 Export
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* QR + count */}
+              {qrImage && (
+                <div style={S.qrPanel}>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#6b6963",
+                      margin: "0 0 8px",
+                    }}
+                  >
+                    Active QR Code
+                  </p>
+                  <div style={S.countdown(qrCountdown <= 10)}>
+                    {String(Math.floor(qrCountdown / 60)).padStart(2, "0")}:
+                    {String(qrCountdown % 60).padStart(2, "0")}
+                  </div>
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      color: "#a09d97",
+                      margin: "0 0 12px",
+                    }}
+                  >
+                    Refreshes every 3 minutes
+                  </p>
+                  <img
+                    src={qrImage}
+                    alt="QR Code"
+                    style={{
+                      width: "200px",
+                      height: "200px",
+                      borderRadius: "8px",
+                    }}
+                  />
+                  <p
+                    style={{
+                      fontSize: "11px",
+                      color: "#a09d97",
+                      margin: "8px 0 0",
+                    }}
+                  >
+                    Token:{" "}
+                    <code
+                      style={{
+                        background: "#f3f2ef",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      {qrToken}
+                    </code>
+                  </p>
+                  <div
+                    style={{
+                      marginTop: "16px",
+                      display: "inline-block",
+                      background: "#f3f2ef",
+                      borderRadius: "10px",
+                      padding: "12px 24px",
+                    }}
+                  >
+                    <span style={{ fontSize: "36px", fontWeight: 800 }}>
+                      {attendanceCount}
+                    </span>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#6b6963",
+                        margin: "2px 0 0",
+                      }}
+                    >
+                      students present
+                    </p>
+                  </div>
+                </div>
               )}
-            </div>
+
+              {/* Alerts */}
+              {alerts.length > 0 && (
+                <div style={S.panel}>
+                  <div style={S.panelHeader}>
+                    <p style={S.panelTitle}>⚠️ Alerts</p>
+                    <span style={S.badge("red")}>{alerts.length}</span>
+                  </div>
+                  <div style={S.panelBody}>
+                    {alerts.map((a) => (
+                      <div key={a.id} style={S.alertCard(a.alert_type)}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          <span
+                            style={S.badge(
+                              a.alert_type === "bar" ? "red" : "amber",
+                            )}
+                          >
+                            {a.alert_type === "bar"
+                              ? "Bar Letter"
+                              : "Warning Letter"}
+                          </span>
+                          <span style={{ fontSize: "12px", color: "#6b6963" }}>
+                            Course {a.course}
+                          </span>
+                        </div>
+                        <p
+                          style={{
+                            fontSize: "13px",
+                            margin: 0,
+                            color: "#1a1917",
+                          }}
+                        >
+                          {a.notes}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
-          {sessions
-            .filter(
-              (s) =>
-                showAllSessions ||
-                new Date(s.date) >= new Date(new Date().toDateString()),
-            )
-            .map((session) => (
-              <div key={session.id} style={styles.card}>
+          {/* ── Course detail view ── */}
+          {selectedCourse && (
+            <>
+              <div style={S.pageHeader}>
                 <div
                   style={{
                     display: "flex",
-                    justifyContent: "space-between",
                     alignItems: "center",
+                    gap: "10px",
+                    marginBottom: "4px",
                   }}
                 >
-                  <span>
-                    📆 {session.date} | {session.start_time} -{" "}
-                    {session.end_time}
-                  </span>
-                  <div>
-                    <button
-                      onClick={() => exportExcel(session.id)}
-                      style={{ ...styles.toggleBtn, marginRight: "6px" }}
+                  <button
+                    style={S.btn("ghost")}
+                    onClick={() => setSelectedCourse(null)}
+                  >
+                    ← Back
+                  </button>
+                  <span style={{ color: "#d0cec9" }}>|</span>
+                  {editingCourse === selectedCourse.id ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        alignItems: "center",
+                      }}
                     >
-                      📥 Export
-                    </button>
-                    <button
-                      onClick={() => deleteSession(session.id)}
-                      style={styles.deleteBtn}
+                      <input
+                        style={{ ...S.input, width: "120px" }}
+                        value={editForm.code}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, code: e.target.value })
+                        }
+                        placeholder="Code"
+                      />
+                      <input
+                        style={{ ...S.input, width: "200px" }}
+                        value={editForm.name}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, name: e.target.value })
+                        }
+                        placeholder="Name"
+                      />
+                      <button
+                        style={S.btn("primary")}
+                        onClick={() => saveEditCourse(selectedCourse.id)}
+                      >
+                        Save
+                      </button>
+                      <button
+                        style={S.btn("ghost")}
+                        onClick={() => setEditingCourse(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
                     >
-                      🗑️
-                    </button>
-                  </div>
+                      <h1 style={{ ...S.pageTitle, fontSize: "18px" }}>
+                        {selectedCourse.name}
+                      </h1>
+                      <span style={S.courseCode}>{selectedCourse.code}</span>
+                      <button
+                        style={S.btn("ghost")}
+                        onClick={() => {
+                          setEditingCourse(selectedCourse.id);
+                          setEditForm({
+                            name: selectedCourse.name,
+                            code: selectedCourse.code,
+                          });
+                        }}
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        style={S.btn("danger")}
+                        onClick={() => deleteCourse(selectedCourse.id)}
+                      >
+                        🗑️ Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tabs */}
+                <div
+                  style={{
+                    borderBottom: "1px solid #e8e6e1",
+                    display: "flex",
+                    gap: "0",
+                    marginTop: "12px",
+                  }}
+                >
+                  <Tab id="overview" label="Overview" />
+                  <Tab id="sessions" label={`Sessions (${sessions.length})`} />
+                  <Tab
+                    id="students"
+                    label={`Students (${studentList.length})`}
+                  />
                 </div>
               </div>
-            ))}
+
+              {/* ── Tab: Overview ── */}
+              {activeTab === "overview" && (
+                <>
+                  <div style={S.grid3}>
+                    <div style={S.stat}>
+                      <p style={S.statLabel}>Total Sessions</p>
+                      <p style={S.statValue}>{sessions.length}</p>
+                    </div>
+                    <div style={S.stat}>
+                      <p style={S.statLabel}>Students Enrolled</p>
+                      <p style={S.statValue}>{studentList.length}</p>
+                    </div>
+                    <div style={S.stat}>
+                      <p style={S.statLabel}>Today</p>
+                      <p style={S.statValue}>
+                        {
+                          todaySessions.filter(
+                            (s) => s.course === selectedCourse.id,
+                          ).length
+                        }
+                      </p>
+                      <p style={S.statSub}>session(s) today</p>
+                    </div>
+                  </div>
+
+                  {/* QR panel */}
+                  {qrImage && (
+                    <div style={{ ...S.qrPanel, marginTop: "1.5rem" }}>
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          color: "#6b6963",
+                          margin: "0 0 8px",
+                        }}
+                      >
+                        Active QR Code
+                      </p>
+                      <div style={S.countdown(qrCountdown <= 10)}>
+                        {String(Math.floor(qrCountdown / 60)).padStart(2, "0")}:
+                        {String(qrCountdown % 60).padStart(2, "0")}
+                      </div>
+                      <p
+                        style={{
+                          fontSize: "12px",
+                          color: "#a09d97",
+                          margin: "0 0 12px",
+                        }}
+                      >
+                        Refreshes every 3 minutes
+                      </p>
+                      <img
+                        src={qrImage}
+                        alt="QR Code"
+                        style={{
+                          width: "200px",
+                          height: "200px",
+                          borderRadius: "8px",
+                        }}
+                      />
+                      <div
+                        style={{
+                          marginTop: "16px",
+                          display: "inline-block",
+                          background: "#f3f2ef",
+                          borderRadius: "10px",
+                          padding: "12px 24px",
+                        }}
+                      >
+                        <span style={{ fontSize: "36px", fontWeight: 800 }}>
+                          {attendanceCount}
+                        </span>
+                        <p
+                          style={{
+                            fontSize: "12px",
+                            color: "#6b6963",
+                            margin: "2px 0 0",
+                          }}
+                        >
+                          students present
+                        </p>
+                      </div>
+                      <div style={{ marginTop: "12px" }}>
+                        <button
+                          style={S.btn("green")}
+                          onClick={() => exportExcel(countSessionId)}
+                        >
+                          📥 Download Excel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Today's sessions for this course */}
+                  <div style={{ ...S.panel, marginTop: "1.5rem" }}>
+                    <div style={S.panelHeader}>
+                      <p style={S.panelTitle}>Today's Sessions</p>
+                    </div>
+                    <div style={S.panelBody}>
+                      {todaySessions.filter(
+                        (s) => s.course === selectedCourse.id,
+                      ).length === 0 ? (
+                        <p style={S.empty}>
+                          No sessions today for this course.
+                        </p>
+                      ) : (
+                        todaySessions
+                          .filter((s) => s.course === selectedCourse.id)
+                          .map((session) => (
+                            <div key={session.id} style={S.sessionCard}>
+                              <div style={S.sessionInfo}>
+                                <p style={S.sessionCourse}>{session.date}</p>
+                                <p style={S.sessionTime}>
+                                  {session.start_time} – {session.end_time}
+                                </p>
+                                {finalizeMsg[session.id] && (
+                                  <p
+                                    style={{
+                                      fontSize: "12px",
+                                      color: "#3b6d11",
+                                      margin: "4px 0 0",
+                                    }}
+                                  >
+                                    {finalizeMsg[session.id]}
+                                  </p>
+                                )}
+                              </div>
+                              <div style={S.sessionActions}>
+                                <button
+                                  style={S.btn("secondary")}
+                                  onClick={() => startQR(session.id)}
+                                >
+                                  📱 QR
+                                </button>
+                                <button
+                                  style={S.btn("green")}
+                                  onClick={() => finalizeSession(session.id)}
+                                >
+                                  ✅ Finalize
+                                </button>
+                                <button
+                                  style={S.btn("ghost")}
+                                  onClick={() => exportExcel(session.id)}
+                                >
+                                  📥
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ── Tab: Sessions ── */}
+              {activeTab === "sessions" && (
+                <div style={S.panel}>
+                  <div style={S.panelHeader}>
+                    <p style={S.panelTitle}>All Sessions</p>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button
+                        style={S.btn("ghost")}
+                        onClick={() => setShowAllSessions(!showAllSessions)}
+                      >
+                        {showAllSessions
+                          ? "Upcoming only"
+                          : "Show all 14 weeks"}
+                      </button>
+                      <button
+                        style={S.btn("secondary")}
+                        onClick={() => setShowAddSession(!showAddSession)}
+                      >
+                        {showAddSession ? "Cancel" : "+ Add session"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {showAddSession && (
+                    <div
+                      style={{
+                        padding: "1.25rem",
+                        borderBottom: "1px solid #f0eeea",
+                        background: "#faf9f7",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "10px",
+                          flexWrap: "wrap",
+                          alignItems: "flex-end",
+                        }}
+                      >
+                        <div style={S.formRow}>
+                          <label style={S.label}>Date</label>
+                          <input
+                            style={{ ...S.input, width: "150px" }}
+                            type="date"
+                            value={newSession.date}
+                            onChange={(e) =>
+                              setNewSession({
+                                ...newSession,
+                                date: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div style={S.formRow}>
+                          <label style={S.label}>Start time</label>
+                          <input
+                            style={{ ...S.input, width: "120px" }}
+                            type="time"
+                            value={newSession.start_time}
+                            onChange={(e) =>
+                              setNewSession({
+                                ...newSession,
+                                start_time: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div style={S.formRow}>
+                          <label style={S.label}>End time</label>
+                          <input
+                            style={{ ...S.input, width: "120px" }}
+                            type="time"
+                            value={newSession.end_time}
+                            onChange={(e) =>
+                              setNewSession({
+                                ...newSession,
+                                end_time: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <button
+                          style={{ ...S.btn("primary"), marginBottom: "12px" }}
+                          onClick={createSession}
+                        >
+                          Add
+                        </button>
+                      </div>
+                      {sessionMsg && (
+                        <p
+                          style={{
+                            fontSize: "13px",
+                            color: sessionMsg.includes("Failed")
+                              ? "#a32d2d"
+                              : "#3b6d11",
+                            margin: 0,
+                          }}
+                        >
+                          {sessionMsg}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div style={S.panelBody}>
+                    {upcomingSessions.length === 0 ? (
+                      <p style={S.empty}>No sessions found.</p>
+                    ) : (
+                      upcomingSessions.map((s) => (
+                        <div
+                          key={s.id}
+                          style={{ ...S.sessionCard, marginBottom: "8px" }}
+                        >
+                          <div style={S.sessionInfo}>
+                            <p style={{ ...S.sessionCourse, fontWeight: 500 }}>
+                              {s.date}
+                            </p>
+                            <p style={S.sessionTime}>
+                              {s.start_time} – {s.end_time}
+                            </p>
+                          </div>
+                          <div style={S.sessionActions}>
+                            <button
+                              style={S.btn("secondary")}
+                              onClick={() => startQR(s.id)}
+                            >
+                              📱 QR
+                            </button>
+                            <button
+                              style={S.btn("ghost")}
+                              onClick={() => exportExcel(s.id)}
+                            >
+                              📥 Export
+                            </button>
+                            <button
+                              style={S.btn("danger")}
+                              onClick={() => deleteSession(s.id)}
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Tab: Students ── */}
+              {activeTab === "students" && (
+                <div style={S.panel}>
+                  <div style={S.panelHeader}>
+                    <p style={S.panelTitle}>Enrolled Students</p>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        alignItems: "center",
+                      }}
+                    >
+                      <label style={{ fontSize: "12px", color: "#6b6963" }}>
+                        Upload list:
+                        <input
+                          key={studentListKey}
+                          type="file"
+                          accept=".xlsx,.pdf,.docx,.doc,image/*"
+                          style={{ marginLeft: "8px", fontSize: "12px" }}
+                          onChange={(e) =>
+                            uploadStudentList(e, selectedCourse.id)
+                          }
+                        />
+                      </label>
+                      {studentList.length > 0 && (
+                        <button
+                          style={S.btn("danger")}
+                          onClick={clearAllStudents}
+                        >
+                          Clear all
+                        </button>
+                      )}
+                      <button style={S.btn("primary")} onClick={openAddStudent}>
+                        + Add student
+                      </button>
+                    </div>
+                  </div>
+
+                  {studentListMsg && (
+                    <div
+                      style={{
+                        padding: "8px 1.25rem",
+                        background: "#eaf3de",
+                        borderBottom: "1px solid #c0dd97",
+                      }}
+                    >
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          color: "#3b6d11",
+                          margin: 0,
+                        }}
+                      >
+                        {studentListMsg}
+                      </p>
+                    </div>
+                  )}
+
+                  {studentList.length === 0 ? (
+                    <div
+                      style={{
+                        ...S.panelBody,
+                        textAlign: "center",
+                        padding: "3rem",
+                      }}
+                    >
+                      <p style={{ fontSize: "32px", margin: "0 0 8px" }}>👥</p>
+                      <p
+                        style={{
+                          fontSize: "14px",
+                          fontWeight: 500,
+                          margin: "0 0 4px",
+                        }}
+                      >
+                        No students enrolled yet
+                      </p>
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          color: "#6b6963",
+                          margin: "0 0 16px",
+                        }}
+                      >
+                        Upload a student list or add manually
+                      </p>
+                      <button style={S.btn("primary")} onClick={openAddStudent}>
+                        + Add first student
+                      </button>
+                    </div>
+                  ) : (
+                    <table style={S.table}>
+                      <thead>
+                        <tr>
+                          <th style={S.th}>#</th>
+                          <th style={S.th}>Matric No.</th>
+                          <th style={S.th}>Full Name</th>
+                          <th style={S.th}>Section</th>
+                          <th style={S.th}>Email</th>
+                          <th style={S.th}>Phone</th>
+                          <th style={{ ...S.th, textAlign: "right" }}>
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {studentList.map((s, i) => (
+                          <tr
+                            key={s.matric_number}
+                            style={{
+                              background: i % 2 === 0 ? "#fff" : "#faf9f7",
+                            }}
+                          >
+                            <td
+                              style={{
+                                ...S.td,
+                                color: "#a09d97",
+                                width: "36px",
+                              }}
+                            >
+                              {i + 1}
+                            </td>
+                            <td
+                              style={{
+                                ...S.td,
+                                fontWeight: 600,
+                                fontFamily: "monospace",
+                                fontSize: "12px",
+                              }}
+                            >
+                              {s.matric_number}
+                            </td>
+                            <td style={S.td}>{s.full_name}</td>
+                            <td style={S.td}>
+                              <span style={s.section ? S.tag : {}}>
+                                {s.section || "—"}
+                              </span>
+                            </td>
+                            <td
+                              style={{
+                                ...S.td,
+                                fontSize: "12px",
+                                color: "#6b6963",
+                              }}
+                            >
+                              {s.email || "—"}
+                            </td>
+                            <td
+                              style={{
+                                ...S.td,
+                                fontSize: "12px",
+                                color: "#6b6963",
+                              }}
+                            >
+                              {s.phone || "—"}
+                            </td>
+                            <td style={{ ...S.td, textAlign: "right" }}>
+                              <button
+                                style={{
+                                  ...S.btn("ghost"),
+                                  marginRight: "4px",
+                                }}
+                                onClick={() => openEditStudent(s)}
+                              >
+                                ✏️ Edit
+                              </button>
+                              <button
+                                style={S.btn("danger")}
+                                onClick={() => deleteStudent(s)}
+                              >
+                                🗑️
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Add Course Modal ── */}
+      {showAddCourseForm && (
+        <div style={S.overlay} onClick={() => setShowAddCourseForm(false)}>
+          <div style={S.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={S.modalHeader}>
+              <p style={S.modalTitle}>Add Course</p>
+              <button
+                style={S.btn("ghost")}
+                onClick={() => setShowAddCourseForm(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={S.modalBody}>
+              <form onSubmit={handleCreateCourse}>
+                <div style={S.formRow}>
+                  <label style={S.label}>Course Code *</label>
+                  <input
+                    style={S.input}
+                    placeholder="e.g. BITM3233"
+                    value={newCourse.code}
+                    onChange={(e) =>
+                      setNewCourse({ ...newCourse, code: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div style={S.formRow}>
+                  <label style={S.label}>Course Name *</label>
+                  <input
+                    style={S.input}
+                    placeholder="e.g. Software Engineering"
+                    value={newCourse.name}
+                    onChange={(e) =>
+                      setNewCourse({ ...newCourse, name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div style={S.formRow}>
+                  <label style={S.label}>Section (optional)</label>
+                  <input
+                    style={S.input}
+                    placeholder="e.g. 1/1"
+                    value={newCourse.section}
+                    onChange={(e) =>
+                      setNewCourse({ ...newCourse, section: e.target.value })
+                    }
+                  />
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    justifyContent: "flex-end",
+                    marginTop: "8px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    style={S.btn("secondary")}
+                    onClick={() => setShowAddCourseForm(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" style={S.btn("primary")}>
+                    Create Course
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Student List */}
-      <div style={{ marginTop: "1.5rem" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <h3>
-            👥 Students — {selectedCourse?.code} ({studentList.length} enrolled)
-          </h3>
-          <button
-            style={styles.toggleBtn}
-            onClick={() => setShowStudents(!showStudents)}
-          >
-            {showStudents ? "Hide" : "Show Students"}
-          </button>
-        </div>
-
-        <div style={{ marginBottom: "8px" }}>
-          <label
-            style={{ fontSize: "13px", color: "#666", marginRight: "8px" }}
-          >
-            Upload student list (.xlsx,.pdf,.docx,.doc,image):
-          </label>
-          <input
-            type="file"
-            key={studentListKey}
-            accept=".xlsx,.pdf,.docx,.doc,image/*"
-            onChange={(e) => uploadStudentList(e, selectedCourse.id)}
-          />
-        </div>
-        {studentListMsg && (
-          <p
-            style={{
-              fontSize: "13px",
-              color: studentListMsg.includes("❌") ? "red" : "green",
-            }}
-          >
-            {studentListMsg}
-          </p>
-        )}
-
-        {showStudents && studentList.length > 0 && (
-          <table style={styles.table}>
-            <thead>
-              <tr style={styles.tableHeader}>
-                <th style={styles.th}>#</th>
-                <th style={styles.th}>Matric</th>
-                <th style={styles.th}>Name</th>
-                <th style={styles.th}>Section</th>
-                <th style={styles.th}>Email</th>
-              </tr>
-            </thead>
-            <tbody>
-              {studentList.map((s, i) => (
-                <tr
-                  key={s.matric_number}
-                  style={i % 2 === 0 ? styles.trEven : styles.trOdd}
+      {/* ── Add / Edit Student Modal ── */}
+      {studentModal && (
+        <div style={S.overlay} onClick={() => setStudentModal(false)}>
+          <div style={S.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={S.modalHeader}>
+              <p style={S.modalTitle}>
+                {editingStudent ? "Edit Student" : "Add Student"}
+              </p>
+              <button
+                style={S.btn("ghost")}
+                onClick={() => setStudentModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={S.modalBody}>
+              <form onSubmit={saveStudent}>
+                <div style={S.formRow}>
+                  <label style={S.label}>Matric Number *</label>
+                  <input
+                    style={S.input}
+                    placeholder="e.g. B122320018"
+                    value={studentForm.matric_number}
+                    onChange={(e) =>
+                      setStudentForm({
+                        ...studentForm,
+                        matric_number: e.target.value.toUpperCase(),
+                      })
+                    }
+                    required
+                  />
+                </div>
+                <div style={S.formRow}>
+                  <label style={S.label}>Full Name *</label>
+                  <input
+                    style={S.input}
+                    placeholder="As per matric card"
+                    value={studentForm.full_name}
+                    onChange={(e) =>
+                      setStudentForm({
+                        ...studentForm,
+                        full_name: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                </div>
+                <div style={S.formRow}>
+                  <label style={S.label}>Section</label>
+                  <input
+                    style={S.input}
+                    placeholder="e.g. 1/1"
+                    value={studentForm.section}
+                    onChange={(e) =>
+                      setStudentForm({
+                        ...studentForm,
+                        section: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <div style={{ ...S.formRow, flex: 1 }}>
+                    <label style={S.label}>Phone</label>
+                    <input
+                      style={S.input}
+                      placeholder="e.g. 0123456789"
+                      value={studentForm.phone}
+                      onChange={(e) =>
+                        setStudentForm({
+                          ...studentForm,
+                          phone: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div style={{ ...S.formRow, flex: 1 }}>
+                    <label style={S.label}>Email</label>
+                    <input
+                      style={S.input}
+                      type="email"
+                      placeholder="student@utem.edu.my"
+                      value={studentForm.email}
+                      onChange={(e) =>
+                        setStudentForm({
+                          ...studentForm,
+                          email: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    justifyContent: "flex-end",
+                    marginTop: "8px",
+                  }}
                 >
-                  <td style={styles.td}>{i + 1}</td>
-                  <td style={styles.td}>{s.matric_number}</td>
-                  <td style={styles.td}>{s.full_name}</td>
-                  <td style={styles.td}>{s.section}</td>
-                  <td style={styles.td}>{s.email}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-
-      {/* Alerts */}
-      <div style={styles.section}>
-        <h3>⚠️ Alerts</h3>
-        {alerts.length === 0 && (
-          <p style={styles.empty}>No alerts triggered yet.</p>
-        )}
-        {alerts.map((alert) => (
-          <div
-            key={alert.id}
-            style={{
-              ...styles.card,
-              borderLeft: `4px solid ${alert.alert_type === "bar" ? "red" : "orange"}`,
-            }}
-          >
-            <b>{alert.alert_type.toUpperCase()} LETTER</b> — Student:{" "}
-            {alert.student} | Course: {alert.course}
-            <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#555" }}>
-              {alert.notes}
-            </p>
+                  <button
+                    type="button"
+                    style={S.btn("secondary")}
+                    onClick={() => setStudentModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" style={S.btn("primary")}>
+                    {editingStudent ? "Save Changes" : "Add Student"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
-
-const styles = {
-  container: {
-    maxWidth: "800px",
-    margin: "0 auto",
-    padding: "2rem",
-    fontFamily: "sans-serif",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "1.5rem",
-  },
-  section: { marginBottom: "2rem" },
-  card: {
-    background: "#f9f9f9",
-    padding: "1rem",
-    borderRadius: "8px",
-    marginBottom: "10px",
-    border: "1px solid #eee",
-  },
-  todayCard: {
-    background: "#f0fdf4",
-    padding: "1rem",
-    borderRadius: "8px",
-    marginBottom: "10px",
-    border: "1px solid #bbf7d0",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  input: {
-    padding: "8px",
-    borderRadius: "8px",
-    border: "1px solid #ddd",
-    fontSize: "14px",
-    marginRight: "8px",
-    marginBottom: "8px",
-  },
-  btn: {
-    padding: "8px 16px",
-    background: "#4f46e5",
-    color: "white",
-    border: "none",
-    borderRadius: "8px",
-    cursor: "pointer",
-  },
-  qrBtn: {
-    padding: "6px 12px",
-    background: "#4f46e5",
-    color: "white",
-    border: "none",
-    borderRadius: "8px",
-    cursor: "pointer",
-    fontSize: "13px",
-  },
-  deleteBtn: {
-    background: "#fee2e2",
-    border: "none",
-    borderRadius: "6px",
-    padding: "4px 8px",
-    cursor: "pointer",
-    fontSize: "14px",
-  },
-  toggleBtn: {
-    background: "#e0e7ff",
-    border: "none",
-    borderRadius: "6px",
-    padding: "6px 12px",
-    cursor: "pointer",
-    fontSize: "12px",
-  },
-  logoutBtn: {
-    background: "#ef4444",
-    color: "white",
-    border: "none",
-    padding: "8px 16px",
-    borderRadius: "8px",
-    cursor: "pointer",
-  },
-  qrBox: {
-    textAlign: "center",
-    margin: "2rem 0",
-    background: "#fafafa",
-    padding: "1.5rem",
-    borderRadius: "12px",
-    border: "1px solid #eee",
-  },
-  qr: { width: "220px", height: "220px" },
-  hint: { color: "#888", fontSize: "12px" },
-  empty: { color: "#aaa", fontStyle: "italic" },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: "13px" },
-  tableHeader: { background: "#4f46e5", color: "white" },
-  th: { padding: "8px 10px", textAlign: "left" },
-  td: { padding: "8px 10px", borderBottom: "1px solid #eee" },
-  trEven: { background: "#f9f9f9" },
-  trOdd: { background: "white" },
-};
