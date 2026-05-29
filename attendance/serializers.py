@@ -4,7 +4,10 @@ from .models import Course, Session, QRToken, AttendanceRecord
 class CourseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Course
-        fields = ['id', 'name', 'code', 'section', 'lecturer', 'students']
+        fields = [
+            'id', 'name', 'code', 'section', 'lecturer', 'students',
+            'semester_start', 'semester_end',
+        ]
         read_only_fields = ['lecturer']
 
 

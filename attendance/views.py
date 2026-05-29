@@ -24,8 +24,9 @@ from .models import Course, Session, QRToken, AttendanceRecord, StudentProfile
 from .serializers import CourseSerializer, SessionSerializer, QRTokenSerializer, AttendanceRecordSerializer
 from .timetable_parser import parse_timetable_image
 from .student_list_parser import parse_student_list
-from alerts.models import Alert
-from alerts.engine import check_and_trigger_alerts
+from alerts.models import Alert, AlertSessionExcuse
+from alerts.engine import check_and_trigger_alerts, excuse_session
+from alerts.serializers import AlertExcuseSerializer
 
 User = get_user_model()
 
@@ -196,6 +197,73 @@ def session_list(request, course_id):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+def _past_session_payload(session):
+    data = SessionSerializer(session).data
+    data['course_code'] = session.course.code
+    data['course_name'] = session.course.name
+    return data
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def past_sessions_for_course(request, course_id):
+    try:
+        course = Course.objects.get(id=course_id, lecturer=request.user)
+    except Course.DoesNotExist:
+        return Response({'error': 'Course not found'}, status=404)
+
+    sessions = (
+        Session.objects.filter(course=course, is_finalized=True)
+        .select_related('course')
+        .order_by('-date', '-start_time')
+    )
+    return Response([_past_session_payload(s) for s in sessions])
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def past_sessions_all(request):
+    courses = Course.objects.filter(lecturer=request.user)
+    sessions = (
+        Session.objects.filter(course__in=courses, is_finalized=True)
+        .select_related('course')
+        .order_by('-date', '-start_time')
+    )
+    return Response([_past_session_payload(s) for s in sessions])
+
+
+def _session_roster(session, request=None):
+    enrolled = StudentProfile.objects.filter(course=session.course).order_by(
+        'section', 'full_name'
+    )
+    records_by_matric = {
+        r.matric_number: r
+        for r in AttendanceRecord.objects.filter(session=session)
+    }
+    excuses_by_matric = {
+        e.matric_number: e
+        for e in AlertSessionExcuse.objects.filter(session=session)
+    }
+    roster = []
+    for student in enrolled:
+        record = records_by_matric.get(student.matric_number)
+        excuse = excuses_by_matric.get(student.matric_number)
+        roster.append({
+            'matric_number': student.matric_number,
+            'full_name': student.full_name,
+            'section': student.section or '',
+            'status': record.status if record else 'absent',
+            'scanned_at': record.scanned_at if record else None,
+            'gps_verified': record.gps_verified if record else False,
+            'excuse': (
+                AlertExcuseSerializer(excuse, context={'request': request}).data
+                if excuse
+                else None
+            ),
+        })
+    return roster
+
+
 # --- QR CODE GENERATION ---
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -311,10 +379,70 @@ def mark_attendance(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def session_attendance(request, session_id):
-    records = AttendanceRecord.objects.filter(
-        session_id=session_id
-    ).order_by('scanned_at')
+    try:
+        session = Session.objects.select_related('course').get(id=session_id)
+    except Session.DoesNotExist:
+        return Response({'error': 'Session not found'}, status=404)
+
+    if request.user.role == 'lecturer' and session.course.lecturer_id != request.user.id:
+        return Response({'error': 'Not allowed'}, status=403)
+
+    if session.is_finalized:
+        return Response({
+            'session': _past_session_payload(session),
+            'roster': _session_roster(session, request),
+        })
+
+    records = AttendanceRecord.objects.filter(session=session).order_by('scanned_at')
     return Response(AttendanceRecordSerializer(records, many=True).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def session_excuse_student(request, session_id):
+    """Upload proof and mark an absent student as excused (present for attendance)."""
+    if request.user.role != 'lecturer':
+        return Response({'error': 'Lecturers only'}, status=403)
+
+    try:
+        session = Session.objects.select_related('course').get(id=session_id)
+    except Session.DoesNotExist:
+        return Response({'error': 'Session not found'}, status=404)
+
+    if session.course.lecturer_id != request.user.id:
+        return Response({'error': 'Not allowed'}, status=403)
+
+    if not session.is_finalized:
+        return Response(
+            {'error': 'Finalize this class before uploading excuses.'},
+            status=400,
+        )
+
+    matric_number = (request.data.get('matric_number') or '').strip().upper()
+    if not matric_number:
+        return Response({'error': 'matric_number is required'}, status=400)
+
+    reason_type = request.data.get('reason_type', '').strip()
+    reason_note = request.data.get('reason_note', '')
+    proof_file = request.FILES.get('proof')
+
+    ok, err = excuse_session(
+        session_id=session.id,
+        matric_number=matric_number,
+        course=session.course,
+        proof_file=proof_file,
+        reason_type=reason_type,
+        reason_note=reason_note,
+        alert=None,
+        lecturer=request.user,
+    )
+    if not ok:
+        return Response({'error': err}, status=400)
+
+    return Response({
+        'message': f'{matric_number} marked as excused for this class.',
+        'roster': _session_roster(session, request),
+    })
 
 # --- TIMETABLE UPLOAD ---
 @api_view(['POST'])
@@ -345,7 +473,21 @@ def upload_timetable(request):
         'Thursday': 3, 'Friday': 4
     }
     created_count = 0
-    TOTAL_WEEKS = 14
+    # 14 teaching weeks: 7 class → 1 holiday (no sessions) → 7 class (15 calendar weeks)
+    CLASS_WEEKS_PER_BLOCK = 7
+    HOLIDAY_WEEKS = 1
+    TOTAL_CLASS_WEEKS = CLASS_WEEKS_PER_BLOCK * 2
+    SEMESTER_CALENDAR_WEEKS = TOTAL_CLASS_WEEKS + HOLIDAY_WEEKS
+    semester_end = (
+        semester_start
+        + datetime.timedelta(weeks=SEMESTER_CALENDAR_WEEKS)
+        - datetime.timedelta(days=1)
+    )
+
+    def calendar_week_offset(class_week_index):
+        if class_week_index < CLASS_WEEKS_PER_BLOCK:
+            return class_week_index
+        return class_week_index + HOLIDAY_WEEKS
 
     for entry in sessions_data:
         try:
@@ -361,12 +503,17 @@ def upload_timetable(request):
                 course.lecturer = request.user
                 course.save()
 
+            course.semester_start = semester_start
+            course.semester_end = semester_end
+            course.save(update_fields=['semester_start', 'semester_end'])
+
             target_weekday = day_map.get(entry['day'], 0)
             days_ahead = (target_weekday - semester_start.weekday()) % 7
             first_session = semester_start + datetime.timedelta(days=days_ahead)
 
-            for week in range(TOTAL_WEEKS):
-                session_date = first_session + datetime.timedelta(weeks=week)
+            for class_week in range(TOTAL_CLASS_WEEKS):
+                offset = calendar_week_offset(class_week)
+                session_date = first_session + datetime.timedelta(weeks=offset)
                 _, created_new = Session.objects.get_or_create(
                     course=course,
                     date=session_date,
@@ -379,7 +526,13 @@ def upload_timetable(request):
             print(f"ERROR on entry {entry}: {e}")
             continue
 
-    return Response({'message': f'{created_count} sessions created across 14 weeks.'})
+    return Response({
+        'message': (
+            f'{created_count} sessions created (7 weeks, 1-week break, 7 weeks).'
+        ),
+        'semester_start': semester_start.isoformat(),
+        'semester_end': semester_end.isoformat(),
+    })
 
 # --- DELETE COURSE ---
 @api_view(['DELETE'])
@@ -409,12 +562,15 @@ def delete_session(request, session_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def todays_sessions(request):
-    today = datetime.date.today()
+    """Unfinalized sessions for today whose end time has not passed yet."""
+    now = timezone.localtime()
+    today = now.date()
     courses = Course.objects.filter(lecturer=request.user)
     sessions = Session.objects.filter(
         course__in=courses,
         date=today,
-        is_finalized=False
+        is_finalized=False,
+        end_time__gt=now.time(),
     )
     return Response(SessionSerializer(sessions, many=True).data)
 
@@ -598,9 +754,15 @@ def reset_semester(request):
 @permission_classes([IsAuthenticated])
 def finalize_session(request, session_id):
     try:
-        session = Session.objects.get(id=session_id)
+        session = Session.objects.select_related('course').get(id=session_id)
     except Session.DoesNotExist:
         return Response({'error': 'Session not found'}, status=404)
+
+    if request.user.role == 'lecturer' and session.course.lecturer_id != request.user.id:
+        return Response({'error': 'Not allowed'}, status=403)
+
+    if session.is_finalized:
+        return Response({'error': 'Session is already finalized.'}, status=400)
 
     course = session.course
 

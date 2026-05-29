@@ -17,9 +17,12 @@ urlpatterns = [
 
     # Sessions
     path('courses/<int:course_id>/sessions/', views.session_list),
+    path('courses/<int:course_id>/sessions/past/', views.past_sessions_for_course),
     path('sessions/today/', views.todays_sessions),
+    path('sessions/past/', views.past_sessions_all),
     path('sessions/<int:session_id>/generate-qr/', views.generate_qr),
     path('sessions/<int:session_id>/attendance/', views.session_attendance),
+    path('sessions/<int:session_id>/excuse/', views.session_excuse_student),
     path('sessions/<int:session_id>/export/', views.export_attendance_excel),
     path('sessions/<int:session_id>/finalize/', views.finalize_session),
     path('sessions/<int:session_id>/delete/', views.delete_session),

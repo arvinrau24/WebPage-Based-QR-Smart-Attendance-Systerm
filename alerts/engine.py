@@ -1,12 +1,16 @@
+import os
+
+from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
 from attendance.models import AttendanceRecord, Session, StudentProfile
-from .models import Alert
+from .models import Alert, AlertSessionExcuse
 
 SYSTEM_EMAIL = 'smartattendance.utem@gmail.com'
 ATTENDANCE_THRESHOLD = 80
 MIN_SESSIONS_FOR_BAR = 3
 MIN_CONSECUTIVE_FOR_WARNING = 3
+ATTENDED_STATUSES = ('present', 'excused')
 
 
 def _session_payload(session):
@@ -27,15 +31,20 @@ def _get_profile(course, student_matric):
 
 def _completed_sessions(course):
     """
-    Sessions that have actually run (finalized) up to today.
-    Future timetable slots and unfinalized classes are excluded.
+    Finalized sessions up to today, limited to the course semester window
+    (set when the lecturer uploads a timetable with a start date).
     """
     today = timezone.localdate()
-    return Session.objects.filter(
+    qs = Session.objects.filter(
         course=course,
         is_finalized=True,
         date__lte=today,
     )
+    if course.semester_start:
+        qs = qs.filter(date__gte=course.semester_start)
+    if course.semester_end:
+        qs = qs.filter(date__lte=course.semester_end)
+    return qs
 
 
 def _get_consecutive_missed_sessions(student_matric, course):
@@ -46,7 +55,7 @@ def _get_consecutive_missed_sessions(student_matric, course):
             session=session,
             matric_number=student_matric,
         ).first()
-        if not record or record.status == 'absent':
+        if not record or record.status not in ATTENDED_STATUSES:
             missed.append(_session_payload(session))
         else:
             break
@@ -61,9 +70,127 @@ def _get_all_missed_sessions(student_matric, course):
             session=session,
             matric_number=student_matric,
         ).first()
-        if not record or record.status == 'absent':
+        if not record or record.status not in ATTENDED_STATUSES:
             missed.append(_session_payload(session))
     return missed
+
+
+def _attendance_percentage(student_matric, course):
+    completed = _completed_sessions(course)
+    total_sessions = completed.count()
+    if total_sessions == 0:
+        return 0.0, 0
+    present_count = AttendanceRecord.objects.filter(
+        session__in=completed,
+        matric_number=student_matric,
+        status__in=ATTENDED_STATUSES,
+    ).count()
+    return (present_count / total_sessions) * 100, total_sessions
+
+
+def validate_excuse_proof(uploaded_file):
+    if not uploaded_file:
+        return 'Proof document is required (MC, note, PDF, or image).'
+    ext = os.path.splitext(uploaded_file.name)[1].lower()
+    if ext not in settings.ALERT_EXCUSE_ALLOWED_EXTENSIONS:
+        return (
+            'Invalid file type. Allowed: PDF, JPG, PNG, GIF, WEBP, DOC, DOCX.'
+        )
+    if uploaded_file.size > settings.ALERT_EXCUSE_MAX_BYTES:
+        return 'File is too large (max 10 MB).'
+    return None
+
+
+def refresh_student_alerts(student_matric, course):
+    """Update or remove pending alerts after an absence is excused."""
+    pending = Alert.objects.filter(
+        course=course,
+        matric_number=student_matric,
+        is_sent=False,
+    )
+    for alert in list(pending):
+        if alert.reason == 'consecutive_absence':
+            missed = _get_consecutive_missed_sessions(student_matric, course)
+            if len(missed) < MIN_CONSECUTIVE_FOR_WARNING:
+                alert.delete()
+                continue
+            alert.consecutive_count = len(missed)
+            alert.missed_sessions = missed
+            alert.save(update_fields=['consecutive_count', 'missed_sessions'])
+        elif alert.reason == 'below_threshold':
+            pct, total = _attendance_percentage(student_matric, course)
+            if total < MIN_SESSIONS_FOR_BAR or pct >= ATTENDANCE_THRESHOLD:
+                alert.delete()
+                continue
+            alert.attendance_percentage = round(pct, 1)
+            alert.missed_sessions = _get_all_missed_sessions(student_matric, course)
+            alert.save(update_fields=['attendance_percentage', 'missed_sessions'])
+
+
+def excuse_session(
+    *,
+    session_id,
+    matric_number,
+    course,
+    proof_file,
+    reason_type,
+    reason_note='',
+    alert=None,
+    lecturer=None,
+):
+    """Mark a missed class as excused and refresh pending warning/bar alerts."""
+    err = validate_excuse_proof(proof_file)
+    if err:
+        return False, err
+
+    valid_reasons = {c[0] for c in AlertSessionExcuse.REASON_TYPES}
+    if reason_type not in valid_reasons:
+        return False, 'Invalid excuse reason type.'
+
+    try:
+        session = Session.objects.get(id=session_id, course=course)
+    except Session.DoesNotExist:
+        return False, 'Session not found for this course.'
+
+    if AlertSessionExcuse.objects.filter(
+        session=session,
+        matric_number=matric_number,
+    ).exists():
+        return False, 'This class was already excused with proof on file.'
+
+    record = AttendanceRecord.objects.filter(
+        session=session,
+        matric_number=matric_number,
+    ).first()
+
+    if record and record.status in ATTENDED_STATUSES:
+        return False, 'Student is already marked present or excused for this class.'
+
+    profile = _get_profile(course, matric_number)
+    if record:
+        record.status = 'excused'
+        record.save(update_fields=['status'])
+    else:
+        AttendanceRecord.objects.create(
+            session=session,
+            matric_number=matric_number,
+            full_name=profile.full_name if profile else '',
+            status='excused',
+        )
+
+    AlertSessionExcuse.objects.create(
+        alert=alert,
+        course=course,
+        session=session,
+        matric_number=matric_number,
+        reason_type=reason_type,
+        reason_note=(reason_note or '').strip(),
+        proof_file=proof_file,
+        uploaded_by=lecturer,
+    )
+
+    refresh_student_alerts(matric_number, course)
+    return True, None
 
 
 def send_alert_to_student(alert):
@@ -106,7 +233,13 @@ Matric No  : {alert.matric_number}
 Issue      : {detail}
 
 Please ensure your attendance improves to avoid being barred from the final examination.
-
+"""
+        if alert.lecturer_message and alert.lecturer_message.strip():
+            body += f"""
+Additional message from your lecturer:
+{alert.lecturer_message.strip()}
+"""
+        body += """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Smart Attendance System — UTeM
 This is an automated message. Please do not reply.
@@ -129,7 +262,13 @@ Issue      : {detail}
 
 You are at risk of being barred from the final examination.
 Please contact your lecturer immediately.
-
+"""
+        if alert.lecturer_message and alert.lecturer_message.strip():
+            body += f"""
+Additional message from your lecturer:
+{alert.lecturer_message.strip()}
+"""
+        body += """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Smart Attendance System — UTeM
 This is an automated message. Please do not reply.
@@ -199,6 +338,10 @@ def trigger_consecutive_absence_alert(student_matric, course):
 
 
 def trigger_below_threshold_alert(student_matric, course):
+    # Bar letters use the semester window from timetable upload (7+holiday+7 weeks).
+    if not course.semester_start or not course.semester_end:
+        return
+
     completed = _completed_sessions(course)
     total_sessions = completed.count()
 
@@ -206,13 +349,7 @@ def trigger_below_threshold_alert(student_matric, course):
     if total_sessions < MIN_SESSIONS_FOR_BAR:
         return
 
-    present_count = AttendanceRecord.objects.filter(
-        session__in=completed,
-        matric_number=student_matric,
-        status='present',
-    ).count()
-
-    attendance_percentage = (present_count / total_sessions) * 100
+    attendance_percentage, _ = _attendance_percentage(student_matric, course)
 
     if attendance_percentage >= ATTENDANCE_THRESHOLD:
         return

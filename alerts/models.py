@@ -1,6 +1,15 @@
+import os
+import uuid
+
 from django.db import models
 from django.conf import settings
-from attendance.models import Course
+from attendance.models import Course, Session
+
+
+def alert_excuse_upload_to(instance, filename):
+    ext = os.path.splitext(filename)[1].lower()
+    safe = f'{uuid.uuid4().hex}{ext}'
+    return f'alert_excuses/{instance.course_id}/{instance.matric_number}/{safe}'
 
 
 class Alert(models.Model):
@@ -32,6 +41,7 @@ class Alert(models.Model):
     triggered_at = models.DateTimeField(auto_now_add=True)
     is_sent = models.BooleanField(default=False)
     notes = models.TextField(blank=True, null=True)
+    lecturer_message = models.TextField(blank=True, default='')
 
     class Meta:
         ordering = ['-triggered_at']
@@ -39,3 +49,40 @@ class Alert(models.Model):
     def __str__(self):
         label = self.student_name or self.matric_number or 'Student'
         return f"{self.alert_type.upper()} - {self.course.code} - {label}"
+
+
+class AlertSessionExcuse(models.Model):
+    REASON_TYPES = (
+        ('mc', 'Medical certificate (MC)'),
+        ('written_note', 'Written note / letter'),
+        ('official_letter', 'Official letter'),
+        ('other', 'Other supporting document'),
+    )
+
+    alert = models.ForeignKey(
+        Alert,
+        on_delete=models.CASCADE,
+        related_name='excuses',
+        null=True,
+        blank=True,
+    )
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='session_excuses')
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='excuses')
+    matric_number = models.CharField(max_length=20)
+    reason_type = models.CharField(max_length=20, choices=REASON_TYPES)
+    reason_note = models.CharField(max_length=255, blank=True)
+    proof_file = models.FileField(upload_to=alert_excuse_upload_to)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='uploaded_excuses',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('session', 'matric_number')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Excuse {self.matric_number} — {self.session_id}'

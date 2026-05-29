@@ -373,7 +373,7 @@ const S = {
     background: "#fff",
     borderRadius: "12px",
     width: "100%",
-    maxWidth: "520px",
+    maxWidth: "640px",
     maxHeight: "90vh",
     overflow: "auto",
     boxShadow: "0 24px 48px rgba(0,0,0,0.18)",
@@ -387,6 +387,22 @@ const S = {
     borderRadius: "8px",
     marginBottom: "8px",
     fontSize: "13px",
+  },
+  missedRowBlock: {
+    padding: "12px",
+    background: "#faf9f7",
+    borderRadius: "8px",
+    marginBottom: "10px",
+    fontSize: "13px",
+    border: "1px solid #f0eeea",
+  },
+  excusedRow: {
+    padding: "10px 12px",
+    background: "#eef6ee",
+    borderRadius: "8px",
+    marginBottom: "8px",
+    fontSize: "13px",
+    border: "1px solid #c8e6c9",
   },
 
   // Misc
@@ -412,6 +428,19 @@ const S = {
     color: "#4a4845",
   },
 };
+
+/** Drop sessions whose end time has already passed (browser local clock). */
+function filterActiveTodaySessions(sessions) {
+  const now = new Date();
+  return sessions.filter((s) => {
+    const parts = String(s.end_time).split(":");
+    const h = Number(parts[0]);
+    const m = Number(parts[1]) || 0;
+    const end = new Date();
+    end.setHours(h, m, 0, 0);
+    return now < end;
+  });
+}
 
 export default function LecturerDashboard() {
   const navigate = useNavigate();
@@ -477,8 +506,24 @@ export default function LecturerDashboard() {
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [alertSendLoading, setAlertSendLoading] = useState(false);
   const [alertActionMsg, setAlertActionMsg] = useState("");
+  const [lecturerMessage, setLecturerMessage] = useState("");
+  const [excuseReasons, setExcuseReasons] = useState({});
+  const [excusingSessionId, setExcusingSessionId] = useState(null);
+
+  const [pastSessions, setPastSessions] = useState([]);
+  const [coursePastSessions, setCoursePastSessions] = useState([]);
+  const [selectedPastSession, setSelectedPastSession] = useState(null);
+  const [pastSessionRoster, setPastSessionRoster] = useState([]);
+  const [pastExcuseReasons, setPastExcuseReasons] = useState({});
+  const [pastExcusingMatric, setPastExcusingMatric] = useState(null);
+  const [pastClassMsg, setPastClassMsg] = useState("");
 
   const pendingAlerts = alerts.filter((a) => !a.is_sent);
+  const mediaUrl = (path) => {
+    if (!path) return null;
+    if (path.startsWith("http")) return path;
+    return `http://127.0.0.1:8000${path}`;
+  };
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -495,6 +540,7 @@ export default function LecturerDashboard() {
     fetchCourses();
     fetchAlerts();
     fetchTodaySessions();
+    fetchPastSessions();
   }, []);
 
   useEffect(() => {
@@ -508,17 +554,10 @@ export default function LecturerDashboard() {
   }, [qrImage]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date();
-      setTodaySessions((prev) =>
-        prev.filter((s) => {
-          const [h, m] = s.end_time.split(":").map(Number);
-          const end = new Date();
-          end.setHours(h, m, 0, 0);
-          return now < end;
-        }),
-      );
-    }, 60000); // check every minute
+    const prune = () =>
+      setTodaySessions((prev) => filterActiveTodaySessions(prev));
+    prune();
+    const interval = setInterval(prune, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -533,17 +572,60 @@ export default function LecturerDashboard() {
 
   const openAlertDetail = async (alert) => {
     setAlertActionMsg("");
+    setExcuseReasons({});
+    setExcusingSessionId(null);
     try {
       const r = await api.get(`/alerts/${alert.id}/`);
       setSelectedAlert(r.data);
+      setLecturerMessage(r.data.lecturer_message || "");
     } catch {
       setSelectedAlert(alert);
+      setLecturerMessage(alert.lecturer_message || "");
     }
   };
 
   const closeAlertModal = () => {
     setSelectedAlert(null);
     setAlertActionMsg("");
+    setLecturerMessage("");
+    setExcuseReasons({});
+    setExcusingSessionId(null);
+  };
+
+  const excuseAlertSession = async (sessionId, fileInput) => {
+    if (!selectedAlert || selectedAlert.is_sent) return;
+    const file = fileInput?.files?.[0];
+    if (!file) {
+      setAlertActionMsg("Upload proof (MC, note, PDF, or image) to excuse this class.");
+      return;
+    }
+    const reasonType = excuseReasons[sessionId] || "mc";
+    setExcusingSessionId(sessionId);
+    setAlertActionMsg("");
+    const fd = new FormData();
+    fd.append("session_id", String(sessionId));
+    fd.append("reason_type", reasonType);
+    fd.append("proof", file);
+    try {
+      const r = await api.post(`/alerts/${selectedAlert.id}/excuse/`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setAlertActionMsg(r.data.message);
+      await fetchAlerts();
+      if (r.data.alert_revoked) {
+        setTimeout(() => closeAlertModal(), 1200);
+        return;
+      }
+      if (r.data.alert) {
+        setSelectedAlert(r.data.alert);
+        setLecturerMessage(r.data.alert.lecturer_message || "");
+      }
+      if (fileInput) fileInput.value = "";
+    } catch (err) {
+      setAlertActionMsg(err.response?.data?.error || "Failed to excuse session");
+    } finally {
+      setExcusingSessionId(null);
+    }
   };
 
   const sendAlertToStudent = async () => {
@@ -551,11 +633,14 @@ export default function LecturerDashboard() {
     setAlertSendLoading(true);
     setAlertActionMsg("");
     try {
-      const r = await api.post(`/alerts/${selectedAlert.id}/send/`);
+      const r = await api.post(`/alerts/${selectedAlert.id}/send/`, {
+        lecturer_message: lecturerMessage,
+      });
       setAlertActionMsg(r.data.message);
       await fetchAlerts();
       const updated = await api.get(`/alerts/${selectedAlert.id}/`);
       setSelectedAlert(updated.data);
+      setLecturerMessage(updated.data.lecturer_message || "");
     } catch (err) {
       setAlertActionMsg(err.response?.data?.error || "Failed to send email");
     } finally {
@@ -577,7 +662,79 @@ export default function LecturerDashboard() {
   };
   const fetchTodaySessions = async () => {
     const r = await api.get("/sessions/today/");
-    setTodaySessions(r.data);
+    setTodaySessions(filterActiveTodaySessions(r.data));
+  };
+
+  const fetchPastSessions = async () => {
+    try {
+      const r = await api.get("/sessions/past/");
+      setPastSessions(r.data);
+    } catch {
+      setPastSessions([]);
+    }
+  };
+
+  const fetchCoursePastSessions = async (courseId) => {
+    try {
+      const r = await api.get(`/courses/${courseId}/sessions/past/`);
+      setCoursePastSessions(r.data);
+    } catch {
+      setCoursePastSessions([]);
+    }
+  };
+
+  const openPastSession = async (session) => {
+    setSelectedPastSession(session);
+    setPastClassMsg("");
+    setPastExcuseReasons({});
+    setPastExcusingMatric(null);
+    try {
+      const r = await api.get(`/sessions/${session.id}/attendance/`);
+      setPastSessionRoster(r.data.roster || []);
+    } catch {
+      setPastSessionRoster([]);
+      setPastClassMsg("Could not load attendance.");
+    }
+  };
+
+  const closePastSessionModal = () => {
+    setSelectedPastSession(null);
+    setPastSessionRoster([]);
+    setPastClassMsg("");
+    setPastExcusingMatric(null);
+  };
+
+  const excusePastStudent = async (matric, fileInput) => {
+    if (!selectedPastSession) return;
+    const file = fileInput?.files?.[0];
+    if (!file) {
+      setPastClassMsg("Upload proof (MC, note, PDF, or image) to mark as excused.");
+      return;
+    }
+    const reasonType = pastExcuseReasons[matric] || "mc";
+    setPastExcusingMatric(matric);
+    setPastClassMsg("");
+    const fd = new FormData();
+    fd.append("matric_number", matric);
+    fd.append("reason_type", reasonType);
+    fd.append("proof", file);
+    try {
+      const r = await api.post(
+        `/sessions/${selectedPastSession.id}/excuse/`,
+        fd,
+        { headers: { "Content-Type": "multipart/form-data" } },
+      );
+      setPastSessionRoster(r.data.roster || []);
+      setPastClassMsg(r.data.message);
+      await fetchPastSessions();
+      if (selectedCourse) fetchCoursePastSessions(selectedCourse.id);
+      await fetchAlerts();
+      if (fileInput) fileInput.value = "";
+    } catch (err) {
+      setPastClassMsg(err.response?.data?.error || "Failed to upload excuse.");
+    } finally {
+      setPastExcusingMatric(null);
+    }
   };
   const fetchAttendanceCount = async (sid) => {
     const r = await api.get(`/sessions/${sid}/attendance/`);
@@ -592,6 +749,7 @@ export default function LecturerDashboard() {
     const r = await api.get(`/courses/${course.id}/sessions/`);
     setSessions(r.data);
     fetchStudentList(course.id);
+    fetchCoursePastSessions(course.id);
     setActiveTab("overview");
   };
 
@@ -698,7 +856,12 @@ export default function LecturerDashboard() {
       const r = await api.post("/upload-timetable/", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setTimetableMsg(r.data.message);
+      const end = r.data.semester_end;
+      setTimetableMsg(
+        end
+          ? `${r.data.message} Semester: ${semesterStart} → ${end}.`
+          : r.data.message,
+      );
       fetchCourses();
       fetchTodaySessions();
     } catch (err) {
@@ -764,9 +927,11 @@ export default function LecturerDashboard() {
       }
       // Refresh session lists so finalized session disappears
       fetchTodaySessions();
+      fetchPastSessions();
       if (selectedCourse) {
         const res = await api.get(`/courses/${selectedCourse.id}/sessions/`);
         setSessions(res.data);
+        fetchCoursePastSessions(selectedCourse.id);
       }
       fetchAlerts();
     } catch (err) {
@@ -885,6 +1050,44 @@ export default function LecturerDashboard() {
     (s) =>
       showAllSessions ||
       new Date(s.date) >= new Date(new Date().toDateString()),
+  );
+
+  const statusLabel = (status) => {
+    if (status === "present") return { text: "Present", color: "#2d6a4f" };
+    if (status === "excused") return { text: "Excused", color: "#2d6a4f" };
+    return { text: "Absent", color: "#a32d2d" };
+  };
+
+  const renderPastSessionRow = (session, showCourseCode = false) => (
+    <div key={session.id} style={{ ...S.sessionCard, marginBottom: "8px" }}>
+      <div style={S.sessionInfo}>
+        {showCourseCode && (
+          <p style={S.sessionCourse}>
+            {session.course_code || session.course_name}
+          </p>
+        )}
+        <p style={{ ...S.sessionCourse, fontWeight: 500 }}>
+          {formatSessionDate(session.date)}
+        </p>
+        <p style={S.sessionTime}>
+          {session.start_time} – {session.end_time}
+        </p>
+      </div>
+      <div style={S.sessionActions}>
+        <button
+          style={S.btn("secondary")}
+          onClick={() => openPastSession(session)}
+        >
+          View attendance
+        </button>
+        <button
+          style={S.btn("ghost")}
+          onClick={() => exportExcel(session.id)}
+        >
+          📥 Export
+        </button>
+      </div>
+    </div>
   );
 
   const Tab = ({ id, label }) => (
@@ -1024,7 +1227,12 @@ export default function LecturerDashboard() {
                     }}
                   >
                     Upload your timetable image/PDF — AI will extract all
-                    courses and create 14 weeks of sessions.
+                    courses and schedule 14 class weeks (7 weeks, 1-week
+                    holiday break, then 7 more weeks). The semester start you
+                    enter sets the window; the end date is 15 calendar weeks
+                    later (including the break).
+                    Bar letters trigger only when attendance falls below 80%
+                    within that semester.
                   </p>
                   <div
                     style={{
@@ -1042,6 +1250,22 @@ export default function LecturerDashboard() {
                         value={semesterStart}
                         onChange={(e) => setSemesterStart(e.target.value)}
                       />
+                      {semesterStart && (
+                        <p
+                          style={{
+                            fontSize: "12px",
+                            color: "#6b6963",
+                            margin: "4px 0 0",
+                          }}
+                        >
+                          Semester ends:{" "}
+                          {(() => {
+                            const d = new Date(`${semesterStart}T12:00:00`);
+                            d.setDate(d.getDate() + 15 * 7 - 1);
+                            return d.toISOString().slice(0, 10);
+                          })()}
+                        </p>
+                      )}
                     </div>
                     <div style={S.formRow}>
                       <label style={S.label}>Timetable file</label>
@@ -1141,6 +1365,44 @@ export default function LecturerDashboard() {
                 </div>
               </div>
 
+              {/* Past classes (finalized) */}
+              <div style={S.panel}>
+                <div style={S.panelHeader}>
+                  <p style={S.panelTitle}>📚 Past Classes</p>
+                  <span style={S.badge("gray")}>
+                    {pastSessions.length} finalized
+                  </span>
+                </div>
+                <div style={S.panelBody}>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#6b6963",
+                      margin: "0 0 12px",
+                    }}
+                  >
+                    Finalized sessions appear here. Open a class to review
+                    attendance and upload MC or notes to mark absent students as
+                    excused (counts as present).
+                  </p>
+                  {pastSessions.length === 0 ? (
+                    <p style={S.empty}>
+                      No finalized classes yet. Use Finalize on today&apos;s
+                      sessions when class ends.
+                    </p>
+                  ) : (
+                    pastSessions.slice(0, 15).map((session) =>
+                      renderPastSessionRow(session, true),
+                    )
+                  )}
+                  {pastSessions.length > 15 && (
+                    <p style={{ fontSize: "12px", color: "#a09d97", marginTop: "8px" }}>
+                      Showing 15 most recent. Select a course for the full list.
+                    </p>
+                  )}
+                </div>
+              </div>
+
               {/* QR + count */}
               {qrImage && (
                 <div style={S.qrPanel}>
@@ -1227,8 +1489,9 @@ export default function LecturerDashboard() {
                   </div>
                   <div style={S.panelBody}>
                     <p style={{ fontSize: "13px", color: "#6b6963", margin: "0 0 12px" }}>
-                      Click an alert to review missed classes, then send the email to the
-                      student (from smartattendance.utem@gmail.com).
+                      Click an alert to review missed classes. Upload MC or other proof
+                      to excuse a day (updates or removes pending alerts). Add an optional
+                      message, then send the email to the student.
                     </p>
                     {alerts.map((a) => (
                       <div
@@ -1545,6 +1808,27 @@ export default function LecturerDashboard() {
                       )}
                     </div>
                   </div>
+
+                  {/* Past classes for this course */}
+                  <div style={{ ...S.panel, marginTop: "1.5rem" }}>
+                    <div style={S.panelHeader}>
+                      <p style={S.panelTitle}>📚 Past Classes</p>
+                      <span style={S.badge("gray")}>
+                        {coursePastSessions.length} finalized
+                      </span>
+                    </div>
+                    <div style={S.panelBody}>
+                      {coursePastSessions.length === 0 ? (
+                        <p style={S.empty}>
+                          No finalized classes for this course yet.
+                        </p>
+                      ) : (
+                        coursePastSessions.map((session) =>
+                          renderPastSessionRow(session, false),
+                        )
+                      )}
+                    </div>
+                  </div>
                 </>
               )}
 
@@ -1560,7 +1844,7 @@ export default function LecturerDashboard() {
                       >
                         {showAllSessions
                           ? "Upcoming only"
-                          : "Show all 14 weeks"}
+                          : "Show full semester"}
                       </button>
                       <button
                         style={S.btn("secondary")}
@@ -1668,6 +1952,17 @@ export default function LecturerDashboard() {
                             <p style={S.sessionTime}>
                               {s.start_time} – {s.end_time}
                             </p>
+                            {finalizeMsg[s.id] && (
+                              <p
+                                style={{
+                                  fontSize: "12px",
+                                  color: "#3b6d11",
+                                  margin: "4px 0 0",
+                                }}
+                              >
+                                {finalizeMsg[s.id]}
+                              </p>
+                            )}
                           </div>
                           <div style={S.sessionActions}>
                             <button
@@ -1675,6 +1970,12 @@ export default function LecturerDashboard() {
                               onClick={() => startQR(s.id)}
                             >
                               📱 QR
+                            </button>
+                            <button
+                              style={S.btn("green")}
+                              onClick={() => finalizeSession(s.id)}
+                            >
+                              ✅ Finalize
                             </button>
                             <button
                               style={S.btn("ghost")}
@@ -2072,6 +2373,179 @@ export default function LecturerDashboard() {
         </div>
       )}
 
+      {/* Past class attendance modal */}
+      {selectedPastSession && (
+        <div style={S.overlay} onClick={closePastSessionModal}>
+          <div
+            style={{ ...S.modal, maxWidth: "720px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={S.modalHeader}>
+              <div>
+                <p style={S.modalTitle}>Past class attendance</p>
+                <p style={{ fontSize: "13px", color: "#6b6963", margin: "4px 0 0" }}>
+                  {selectedPastSession.course_code
+                    ? `${selectedPastSession.course_code} · `
+                    : ""}
+                  {formatSessionDate(selectedPastSession.date)}{" "}
+                  {selectedPastSession.start_time} – {selectedPastSession.end_time}
+                </p>
+              </div>
+              <button
+                type="button"
+                style={S.btn("ghost")}
+                onClick={closePastSessionModal}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={S.modalBody}>
+              <p style={{ fontSize: "13px", color: "#6b6963", margin: "0 0 12px" }}>
+                For absent students, upload MC or a supporting document to mark them
+                as excused (counts toward attendance).
+              </p>
+
+              {pastSessionRoster.length === 0 ? (
+                <p style={S.empty}>No enrolled students for this class.</p>
+              ) : (
+                <table style={S.table}>
+                  <thead>
+                    <tr>
+                      <th style={S.th}>Matric</th>
+                      <th style={S.th}>Name</th>
+                      <th style={S.th}>Section</th>
+                      <th style={S.th}>Status</th>
+                      <th style={{ ...S.th, textAlign: "right" }}>Excuse</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pastSessionRoster.map((row) => {
+                      const st = statusLabel(row.status);
+                      const canExcuse = row.status === "absent";
+                      return (
+                        <tr key={row.matric_number}>
+                          <td style={S.td}>{row.matric_number}</td>
+                          <td style={S.td}>{row.full_name}</td>
+                          <td style={S.td}>{row.section || "—"}</td>
+                          <td style={S.td}>
+                            <span style={{ color: st.color, fontWeight: 600 }}>
+                              {st.text}
+                            </span>
+                            {row.excuse?.proof_url && (
+                              <p style={{ margin: "4px 0 0", fontSize: "11px" }}>
+                                <a
+                                  href={mediaUrl(row.excuse.proof_url)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{ color: "#185fa5" }}
+                                >
+                                  View proof
+                                </a>
+                              </p>
+                            )}
+                          </td>
+                          <td style={{ ...S.td, textAlign: "right" }}>
+                            {canExcuse ? (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "6px",
+                                  alignItems: "flex-end",
+                                }}
+                              >
+                                <select
+                                  style={{ ...S.input, fontSize: "12px", width: "180px" }}
+                                  value={pastExcuseReasons[row.matric_number] || "mc"}
+                                  onChange={(e) =>
+                                    setPastExcuseReasons((prev) => ({
+                                      ...prev,
+                                      [row.matric_number]: e.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="mc">Medical certificate (MC)</option>
+                                  <option value="written_note">Written note</option>
+                                  <option value="official_letter">Official letter</option>
+                                  <option value="other">Other document</option>
+                                </select>
+                                <input
+                                  type="file"
+                                  accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,image/*"
+                                  style={{ fontSize: "11px", maxWidth: "200px" }}
+                                  id={`past-excuse-${row.matric_number}`}
+                                />
+                                <button
+                                  type="button"
+                                  style={{ ...S.btn("green"), fontSize: "12px" }}
+                                  disabled={pastExcusingMatric === row.matric_number}
+                                  onClick={() => {
+                                    const el = document.getElementById(
+                                      `past-excuse-${row.matric_number}`,
+                                    );
+                                    excusePastStudent(row.matric_number, el);
+                                  }}
+                                >
+                                  {pastExcusingMatric === row.matric_number
+                                    ? "Uploading…"
+                                    : "Upload & excuse"}
+                                </button>
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: "12px", color: "#a09d97" }}>
+                                —
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+
+              {pastClassMsg && (
+                <p
+                  style={{
+                    fontSize: "13px",
+                    marginTop: "12px",
+                    color: pastClassMsg.toLowerCase().includes("fail")
+                      ? "#c13515"
+                      : "#2d6a4f",
+                  }}
+                >
+                  {pastClassMsg}
+                </p>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: "10px",
+                  marginTop: "16px",
+                }}
+              >
+                <button
+                  type="button"
+                  style={S.btn("secondary")}
+                  onClick={() => exportExcel(selectedPastSession.id)}
+                >
+                  📥 Export Excel
+                </button>
+                <button
+                  type="button"
+                  style={S.btn("primary")}
+                  onClick={closePastSessionModal}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Alert detail modal */}
       {selectedAlert && (
         <div style={S.alertOverlay} onClick={closeAlertModal}>
@@ -2144,6 +2618,58 @@ export default function LecturerDashboard() {
                 </p>
               )}
 
+              {(selectedAlert.excuses?.length > 0) && (
+                <>
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "#2d6a4f",
+                      margin: "12px 0 8px",
+                    }}
+                  >
+                    Excused (proof on file)
+                  </p>
+                  {selectedAlert.excuses.map((ex) => (
+                    <div key={ex.id} style={S.excusedRow}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: "8px",
+                        }}
+                      >
+                        <span>
+                          {formatSessionDate(ex.session_date)}{" "}
+                          {String(ex.start_time).slice(0, 5)} –{" "}
+                          {String(ex.end_time).slice(0, 5)}
+                        </span>
+                        <span style={{ color: "#2d6a4f", fontWeight: 600 }}>
+                          Excused
+                        </span>
+                      </div>
+                      <p style={{ margin: "4px 0 0", color: "#6b6963", fontSize: "12px" }}>
+                        {ex.reason_label}
+                        {ex.reason_note ? ` — ${ex.reason_note}` : ""}
+                        {ex.proof_url && (
+                          <>
+                            {" · "}
+                            <a
+                              href={ex.proof_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: "#185fa5" }}
+                            >
+                              View proof
+                            </a>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  ))}
+                </>
+              )}
+
               {(selectedAlert.missed_sessions?.length > 0) && (
                 <>
                   <p
@@ -2155,16 +2681,99 @@ export default function LecturerDashboard() {
                     }}
                   >
                     Classes not attended
+                    {!selectedAlert.is_sent && (
+                      <span style={{ fontWeight: 400, color: "#6b6963" }}>
+                        {" "}
+                        — upload MC / note / PDF to excuse and update alerts
+                      </span>
+                    )}
                   </p>
                   {selectedAlert.missed_sessions.map((s) => (
-                    <div key={s.session_id || `${s.date}-${s.start_time}`} style={S.missedRow}>
-                      <span>{formatSessionDate(s.date)}</span>
-                      <span style={{ color: "#6b6963" }}>
-                        {s.start_time} – {s.end_time}
-                      </span>
+                    <div
+                      key={s.session_id || `${s.date}-${s.start_time}`}
+                      style={S.missedRowBlock}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          marginBottom: selectedAlert.is_sent ? 0 : "10px",
+                        }}
+                      >
+                        <span>{formatSessionDate(s.date)}</span>
+                        <span style={{ color: "#6b6963" }}>
+                          {s.start_time} – {s.end_time}
+                        </span>
+                      </div>
+                      {!selectedAlert.is_sent && s.session_id && (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "8px",
+                          }}
+                        >
+                          <select
+                            style={{ ...S.input, fontSize: "13px" }}
+                            value={excuseReasons[s.session_id] || "mc"}
+                            onChange={(e) =>
+                              setExcuseReasons((prev) => ({
+                                ...prev,
+                                [s.session_id]: e.target.value,
+                              }))
+                            }
+                          >
+                            <option value="mc">Medical certificate (MC)</option>
+                            <option value="written_note">Written note / letter</option>
+                            <option value="official_letter">Official letter</option>
+                            <option value="other">Other document</option>
+                          </select>
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,image/*"
+                            style={{ fontSize: "12px" }}
+                            id={`excuse-file-${s.session_id}`}
+                          />
+                          <button
+                            type="button"
+                            style={S.btn("green")}
+                            disabled={excusingSessionId === s.session_id}
+                            onClick={() => {
+                              const el = document.getElementById(
+                                `excuse-file-${s.session_id}`,
+                              );
+                              excuseAlertSession(s.session_id, el);
+                            }}
+                          >
+                            {excusingSessionId === s.session_id
+                              ? "Uploading…"
+                              : "Upload proof & excuse"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </>
+              )}
+
+              {!selectedAlert.is_sent && (
+                <div style={{ marginTop: "16px" }}>
+                  <label style={S.label}>
+                    Additional message for student email (optional)
+                  </label>
+                  <textarea
+                    style={{
+                      ...S.input,
+                      width: "100%",
+                      minHeight: "88px",
+                      resize: "vertical",
+                      marginTop: "6px",
+                    }}
+                    placeholder="e.g. Please submit any remaining MC to the faculty office by Friday."
+                    value={lecturerMessage}
+                    onChange={(e) => setLecturerMessage(e.target.value)}
+                  />
+                </div>
               )}
 
               {alertActionMsg && (
@@ -2172,9 +2781,12 @@ export default function LecturerDashboard() {
                   style={{
                     fontSize: "13px",
                     marginTop: "12px",
-                    color: alertActionMsg.includes("sent")
-                      ? "#2d6a4f"
-                      : "#c13515",
+                    color:
+                      alertActionMsg.includes("sent") ||
+                      alertActionMsg.includes("Excused") ||
+                      alertActionMsg.includes("excused")
+                        ? "#2d6a4f"
+                        : "#c13515",
                   }}
                 >
                   {alertActionMsg}

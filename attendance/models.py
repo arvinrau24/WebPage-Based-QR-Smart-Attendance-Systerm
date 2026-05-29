@@ -16,6 +16,8 @@ class Course(models.Model):
         related_name='enrolled_courses',
         blank=True
     )
+    semester_start = models.DateField(null=True, blank=True)
+    semester_end = models.DateField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.code} - {self.name}"
@@ -48,6 +50,7 @@ class AttendanceRecord(models.Model):
     STATUS_CHOICES = (
         ('present', 'Present'),
         ('absent', 'Absent'),
+        ('excused', 'Excused'),
     )
     session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='attendance_records')
     student = models.ForeignKey(
