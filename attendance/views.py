@@ -30,6 +30,36 @@ from alerts.serializers import AlertExcuseSerializer
 
 User = get_user_model()
 
+# Semester: 14 teaching weeks in 15 calendar weeks (7 class + 1 holiday + 7 class)
+SEMESTER_CLASS_WEEKS_PER_BLOCK = 7
+SEMESTER_HOLIDAY_WEEKS = 1
+SEMESTER_TOTAL_CLASS_WEEKS = SEMESTER_CLASS_WEEKS_PER_BLOCK * 2
+SEMESTER_CALENDAR_WEEKS = SEMESTER_TOTAL_CLASS_WEEKS + SEMESTER_HOLIDAY_WEEKS
+
+
+def semester_end_from_start(semester_start):
+    return (
+        semester_start
+        + datetime.timedelta(weeks=SEMESTER_CALENDAR_WEEKS)
+        - datetime.timedelta(days=1)
+    )
+
+
+def calendar_week_offset(class_week_index):
+    if class_week_index < SEMESTER_CLASS_WEEKS_PER_BLOCK:
+        return class_week_index
+    return class_week_index + SEMESTER_HOLIDAY_WEEKS
+
+
+def _parse_semester_start(value):
+    if not value:
+        return None, 'Semester start date is required (YYYY-MM-DD).'
+    try:
+        return datetime.date.fromisoformat(str(value).strip()), None
+    except ValueError:
+        return None, 'Invalid date format. Use YYYY-MM-DD.'
+
+
 # --- COURSES ---
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -162,7 +192,19 @@ def create_course_manual(request):
             section=section,
             lecturer=request.user
         )
-        
+        ref = (
+            Course.objects.filter(
+                lecturer=request.user,
+                semester_start__isnull=False,
+            )
+            .exclude(pk=course.pk)
+            .first()
+        )
+        if ref:
+            course.semester_start = ref.semester_start
+            course.semester_end = ref.semester_end
+            course.save(update_fields=['semester_start', 'semester_end'])
+
         return Response({
             'message': 'Course created successfully',
             'course': {
@@ -451,14 +493,9 @@ def upload_timetable(request):
     if 'image' not in request.FILES:
         return Response({'error': 'No image uploaded'}, status=400)
 
-    semester_start_str = request.data.get('semester_start')
-    if not semester_start_str:
-        return Response({'error': 'Semester start date is required'}, status=400)
-
-    try:
-        semester_start = datetime.date.fromisoformat(semester_start_str)
-    except ValueError:
-        return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+    semester_start, err = _parse_semester_start(request.data.get('semester_start'))
+    if err:
+        return Response({'error': err}, status=400)
 
     image_file = request.FILES['image']
     image_bytes = image_file.read()
@@ -473,21 +510,7 @@ def upload_timetable(request):
         'Thursday': 3, 'Friday': 4
     }
     created_count = 0
-    # 14 teaching weeks: 7 class → 1 holiday (no sessions) → 7 class (15 calendar weeks)
-    CLASS_WEEKS_PER_BLOCK = 7
-    HOLIDAY_WEEKS = 1
-    TOTAL_CLASS_WEEKS = CLASS_WEEKS_PER_BLOCK * 2
-    SEMESTER_CALENDAR_WEEKS = TOTAL_CLASS_WEEKS + HOLIDAY_WEEKS
-    semester_end = (
-        semester_start
-        + datetime.timedelta(weeks=SEMESTER_CALENDAR_WEEKS)
-        - datetime.timedelta(days=1)
-    )
-
-    def calendar_week_offset(class_week_index):
-        if class_week_index < CLASS_WEEKS_PER_BLOCK:
-            return class_week_index
-        return class_week_index + HOLIDAY_WEEKS
+    semester_end = semester_end_from_start(semester_start)
 
     for entry in sessions_data:
         try:
@@ -511,14 +534,18 @@ def upload_timetable(request):
             days_ahead = (target_weekday - semester_start.weekday()) % 7
             first_session = semester_start + datetime.timedelta(days=days_ahead)
 
-            for class_week in range(TOTAL_CLASS_WEEKS):
+            for class_week in range(SEMESTER_TOTAL_CLASS_WEEKS):
                 offset = calendar_week_offset(class_week)
                 session_date = first_session + datetime.timedelta(weeks=offset)
+                def _db_time(t):
+                    t = (t or '').strip()
+                    return t if len(t) > 5 else f'{t}:00'
+
                 _, created_new = Session.objects.get_or_create(
                     course=course,
                     date=session_date,
-                    start_time=entry['start_time'] + ':00',
-                    end_time=entry['end_time'] + ':00',
+                    start_time=_db_time(entry['start_time']),
+                    end_time=_db_time(entry['end_time']),
                 )
                 if created_new:
                     created_count += 1
@@ -558,21 +585,86 @@ def delete_session(request, session_id):
         return Response({'error': 'Session not found'}, status=404)
 
 
+def _time_to_seconds(t):
+    return t.hour * 3600 + t.minute * 60 + t.second
+
+
+def _session_not_ended(session, now=None):
+    """True if the session has not ended yet (handles end before start as next day)."""
+    now = timezone.localtime(now or timezone.now())
+    start_secs = _time_to_seconds(session.start_time)
+    end_secs = _time_to_seconds(session.end_time)
+    now_secs = _time_to_seconds(now.time())
+    if end_secs <= start_secs:
+        # Overnight session: active from start until midnight, then until end.
+        return now_secs >= start_secs or now_secs < end_secs
+    return now_secs < end_secs
+
+
 # --- TODAY'S SESSIONS ---
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def todays_sessions(request):
-    """Unfinalized sessions for today whose end time has not passed yet."""
-    now = timezone.localtime()
-    today = now.date()
+    """All unfinalized sessions scheduled for today (including in-progress and ended)."""
+    today = timezone.localdate()
     courses = Course.objects.filter(lecturer=request.user)
-    sessions = Session.objects.filter(
-        course__in=courses,
-        date=today,
-        is_finalized=False,
-        end_time__gt=now.time(),
+    sessions = (
+        Session.objects.filter(
+            course__in=courses,
+            date=today,
+            is_finalized=False,
+        )
+        .select_related('course')
+        .order_by('start_time')
     )
-    return Response(SessionSerializer(sessions, many=True).data)
+    data = SessionSerializer(sessions, many=True).data
+    for item, session in zip(data, sessions):
+        item['course_code'] = session.course.code
+        item['is_active'] = _session_not_ended(session)
+    return Response(data)
+
+# --- SEMESTER DATES (no timetable required) ---
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def set_semester(request):
+    """Set semester start/end on lecturer course(s) for bar-letter attendance window."""
+    if request.user.role != 'lecturer':
+        return Response({'error': 'Unauthorized'}, status=403)
+
+    semester_start, err = _parse_semester_start(request.data.get('semester_start'))
+    if err:
+        return Response({'error': err}, status=400)
+
+    semester_end = semester_end_from_start(semester_start)
+    courses = Course.objects.filter(lecturer=request.user)
+    course_id = request.data.get('course_id')
+    if course_id is not None:
+        courses = courses.filter(id=course_id)
+        if not courses.exists():
+            return Response({'error': 'Course not found'}, status=404)
+
+    updated = courses.update(
+        semester_start=semester_start,
+        semester_end=semester_end,
+    )
+
+    if updated == 0:
+        return Response({
+            'message': (
+                'Semester dates saved. They will apply when you add or import courses.'
+            ),
+            'semester_start': semester_start.isoformat(),
+            'semester_end': semester_end.isoformat(),
+            'updated_count': 0,
+        })
+
+    return Response({
+        'message': f'Semester dates set on {updated} course(s).',
+        'semester_start': semester_start.isoformat(),
+        'semester_end': semester_end.isoformat(),
+        'updated_count': updated,
+    })
+
 
 # --- EDIT COURSE ---
 @api_view(['PATCH'])
@@ -587,6 +679,14 @@ def edit_course(request, course_id):
     code = request.data.get('code', course.code)
     course.name = name
     course.code = code
+
+    if 'semester_start' in request.data:
+        start, err = _parse_semester_start(request.data.get('semester_start'))
+        if err:
+            return Response({'error': err}, status=400)
+        course.semester_start = start
+        course.semester_end = semester_end_from_start(start)
+
     course.save()
     return Response(CourseSerializer(course).data)
 

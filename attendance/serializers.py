@@ -17,6 +17,18 @@ class SessionSerializer(serializers.ModelSerializer):
         fields = ['id', 'course', 'date', 'start_time', 'end_time', 'created_at', 'is_finalized']
         read_only_fields = ['course', 'created_at']
 
+    def validate(self, data):
+        start = data.get('start_time')
+        end = data.get('end_time')
+        if self.instance:
+            start = start if start is not None else self.instance.start_time
+            end = end if end is not None else self.instance.end_time
+        if start and end and end <= start:
+            raise serializers.ValidationError(
+                {'end_time': 'End time must be after start time on the same day.'}
+            )
+        return data
+
 
 class QRTokenSerializer(serializers.ModelSerializer):
     class Meta:

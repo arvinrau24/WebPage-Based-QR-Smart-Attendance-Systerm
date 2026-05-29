@@ -29,6 +29,7 @@ urlpatterns = [
 
     # Other
     path('mark/', views.mark_attendance),
+    path('semester/', views.set_semester),
     path('upload-timetable/', views.upload_timetable),
     path('upload-student-list/', views.upload_student_list),
     path('reset-semester/', views.reset_semester),

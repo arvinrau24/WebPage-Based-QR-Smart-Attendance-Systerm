@@ -1,42 +1,92 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import api from '../api/axios'
+import { T } from '../styles/studentTheme'
+
+function PageShell({ children }) {
+  return (
+    <div style={T.page}>
+      <div style={T.wrap}>
+        <header style={T.header}>
+          <div style={T.logo}>◈</div>
+          <h1 style={T.brand}>Smart Attendance</h1>
+          <p style={T.tagline}>UTeM student check-in</p>
+        </header>
+        {children}
+        <p style={T.footer}>Your location is used only to verify you are on campus.</p>
+      </div>
+    </div>
+  )
+}
 
 export default function ScanPage() {
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
   const [form, setForm] = useState({ full_name: '', matric_number: '' })
   const [location, setLocation] = useState({ latitude: null, longitude: null })
-  const [gpsStatus, setGpsStatus] = useState('Getting your location...')
+  const [gpsState, setGpsState] = useState('loading') // loading | ok | warn | unsupported
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [focusedField, setFocusedField] = useState(null)
 
   useEffect(() => {
-    // Get GPS location automatically
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setLocation({
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude
-          })
-          setGpsStatus('📍 Location captured')
-        },
-        (err) => {
-          setGpsStatus('⚠️ Location unavailable — attendance will be marked without GPS')
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      )
-    } else {
-      setGpsStatus('⚠️ GPS not supported on this device')
+    if (!navigator.geolocation) {
+      setGpsState('unsupported')
+      return
     }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        })
+        setGpsState('ok')
+      },
+      () => setGpsState('warn'),
+      { enableHighAccuracy: true, timeout: 10000 },
+    )
   }, [])
 
-  const handleSubmit = async () => {
-    if (!form.full_name || !form.matric_number) {
-      setError('Please fill in both fields')
+  const inputStyle = (name) => ({
+    ...T.input,
+    ...(focusedField === name ? T.inputFocus : {}),
+  })
+
+  const gpsBanner = () => {
+    if (gpsState === 'loading') {
+      return (
+        <div style={T.alert('info')}>
+          <span>Locating you… allow location access when prompted.</span>
+        </div>
+      )
+    }
+    if (gpsState === 'ok') {
+      return (
+        <div style={T.alert('success')}>
+          <span>Location captured — on-campus check-in enabled.</span>
+        </div>
+      )
+    }
+    if (gpsState === 'unsupported') {
+      return (
+        <div style={T.alert('warn')}>
+          <span>GPS is not available on this device. You can still submit attendance.</span>
+        </div>
+      )
+    }
+    return (
+      <div style={T.alert('warn')}>
+        <span>Location unavailable. Enable GPS or continue without it.</span>
+      </div>
+    )
+  }
+
+  const handleSubmit = async (e) => {
+    e?.preventDefault()
+    if (!form.full_name.trim() || !form.matric_number.trim()) {
+      setError('Please enter your full name and matric number.')
       return
     }
     setLoading(true)
@@ -44,85 +94,96 @@ export default function ScanPage() {
     try {
       const res = await api.post('/mark/', {
         token,
-        full_name: form.full_name,
-        matric_number: form.matric_number,
+        full_name: form.full_name.trim(),
+        matric_number: form.matric_number.trim(),
         latitude: location.latitude,
-        longitude: location.longitude
+        longitude: location.longitude,
       })
       setMessage(res.data.message)
       setSubmitted(true)
     } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong')
+      setError(err.response?.data?.error || 'Something went wrong. Please try again.')
     }
     setLoading(false)
   }
 
-  if (!token) return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h2 style={styles.errorTitle}>❌ Invalid QR Code</h2>
-        <p>Please scan a valid QR code from your lecturer.</p>
-      </div>
-    </div>
-  )
+  if (!token) {
+    return (
+      <PageShell>
+        <div style={{ ...T.card, textAlign: 'center' }}>
+          <div style={T.errorIcon}>!</div>
+          <h2 style={T.cardTitle}>Invalid link</h2>
+          <p style={T.cardSubtitle}>
+            Scan the QR code displayed by your lecturer in class. Do not bookmark or share an old link.
+          </p>
+        </div>
+      </PageShell>
+    )
+  }
 
-  if (submitted) return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h2 style={styles.successTitle}>✅ Done!</h2>
-        <p style={styles.successMsg}>{message}</p>
-        <p style={{ color: '#888', fontSize: '13px' }}>You may close this page.</p>
-      </div>
-    </div>
-  )
+  if (submitted) {
+    return (
+      <PageShell>
+        <div style={{ ...T.card, textAlign: 'center' }}>
+          <div style={T.successIcon}>✓</div>
+          <h2 style={T.cardTitle}>Attendance recorded</h2>
+          <p style={{ ...T.cardSubtitle, marginBottom: '8px' }}>{message}</p>
+          <p style={{ fontSize: '13px', color: '#a09d97', margin: 0 }}>You can close this page.</p>
+        </div>
+      </PageShell>
+    )
+  }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h2 style={styles.title}>📋 Mark Attendance</h2>
-        <p style={styles.subtitle}>Fill in your details to mark attendance</p>
+    <PageShell>
+      <div style={T.card}>
+        <h2 style={T.cardTitle}>Mark attendance</h2>
+        <p style={T.cardSubtitle}>
+          Enter your details exactly as they appear on your student card.
+        </p>
 
-        <div style={styles.gpsBar}>
-          <span style={{ fontSize: '13px' }}>{gpsStatus}</span>
-        </div>
+        {gpsBanner()}
 
-        <input
-          style={styles.input}
-          placeholder="Full Name (as per matric card)"
-          value={form.full_name}
-          onChange={e => setForm({ ...form, full_name: e.target.value })}
-        />
-        <input
-          style={styles.input}
-          placeholder="Matric Number (e.g. B122320018)"
-          value={form.matric_number}
-          onChange={e => setForm({ ...form, matric_number: e.target.value.toUpperCase() })}
-        />
+        <form onSubmit={handleSubmit}>
+          <label style={T.label} htmlFor="full_name">
+            Full name
+          </label>
+          <input
+            id="full_name"
+            style={inputStyle('full_name')}
+            placeholder="e.g. Ahmad bin Ali"
+            value={form.full_name}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+            onFocus={() => setFocusedField('full_name')}
+            onBlur={() => setFocusedField(null)}
+            autoComplete="name"
+            disabled={loading}
+          />
 
-        {error && <p style={styles.error}>{error}</p>}
+          <label style={T.label} htmlFor="matric_number">
+            Matric number
+          </label>
+          <input
+            id="matric_number"
+            style={inputStyle('matric_number')}
+            placeholder="e.g. B122320018"
+            value={form.matric_number}
+            onChange={(e) =>
+              setForm({ ...form, matric_number: e.target.value.toUpperCase() })
+            }
+            onFocus={() => setFocusedField('matric_number')}
+            onBlur={() => setFocusedField(null)}
+            autoComplete="off"
+            disabled={loading}
+          />
 
-        <button
-          style={{ ...styles.button, opacity: loading ? 0.7 : 1 }}
-          onClick={handleSubmit}
-          disabled={loading}
-        >
-          {loading ? 'Submitting...' : 'Mark My Attendance'}
-        </button>
+          {error && <div style={T.alert('error')}>{error}</div>}
+
+          <button type="submit" style={T.button(loading)} disabled={loading}>
+            {loading ? 'Submitting…' : 'Submit attendance'}
+          </button>
+        </form>
       </div>
-    </div>
+    </PageShell>
   )
-}
-
-const styles = {
-  container: { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f0f2f5', padding: '1rem' },
-  card: { background: 'white', padding: '2rem', borderRadius: '16px', width: '100%', maxWidth: '400px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' },
-  title: { textAlign: 'center', margin: '0 0 4px', color: '#1a1a2e' },
-  subtitle: { textAlign: 'center', color: '#888', fontSize: '14px', marginBottom: '1.5rem' },
-  gpsBar: { background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '8px 12px', marginBottom: '1rem' },
-  input: { width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '14px', boxSizing: 'border-box' },
-  button: { width: '100%', padding: '12px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', cursor: 'pointer' },
-  error: { color: 'red', fontSize: '13px', marginBottom: '8px' },
-  errorTitle: { color: '#ef4444', textAlign: 'center' },
-  successTitle: { color: '#22c55e', textAlign: 'center' },
-  successMsg: { textAlign: 'center', fontSize: '16px' }
 }

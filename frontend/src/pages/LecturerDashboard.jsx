@@ -429,19 +429,6 @@ const S = {
   },
 };
 
-/** Drop sessions whose end time has already passed (browser local clock). */
-function filterActiveTodaySessions(sessions) {
-  const now = new Date();
-  return sessions.filter((s) => {
-    const parts = String(s.end_time).split(":");
-    const h = Number(parts[0]);
-    const m = Number(parts[1]) || 0;
-    const end = new Date();
-    end.setHours(h, m, 0, 0);
-    return now < end;
-  });
-}
-
 export default function LecturerDashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -494,6 +481,8 @@ export default function LecturerDashboard() {
     end_time: "",
   });
   const [semesterStart, setSemesterStart] = useState("");
+  const [semesterMsg, setSemesterMsg] = useState("");
+  const [semesterSaving, setSemesterSaving] = useState(false);
   const [timetableKey, setTimetableKey] = useState(0);
   const [studentListKey, setStudentListKey] = useState(0);
 
@@ -553,17 +542,19 @@ export default function LecturerDashboard() {
     return () => clearInterval(t);
   }, [qrImage]);
 
-  useEffect(() => {
-    const prune = () =>
-      setTodaySessions((prev) => filterActiveTodaySessions(prev));
-    prune();
-    const interval = setInterval(prune, 60000);
-    return () => clearInterval(interval);
-  }, []);
+  const computeSemesterEnd = (startIso) => {
+    const d = new Date(`${startIso}T12:00:00`);
+    d.setDate(d.getDate() + 15 * 7 - 1);
+    return d.toISOString().slice(0, 10);
+  };
 
   const fetchCourses = async () => {
     const r = await api.get("/courses/");
     setCourses(r.data);
+    const withSem = r.data.find((c) => c.semester_start);
+    if (withSem?.semester_start) {
+      setSemesterStart(withSem.semester_start);
+    }
   };
   const fetchAlerts = async () => {
     const r = await api.get("/alerts/");
@@ -662,7 +653,7 @@ export default function LecturerDashboard() {
   };
   const fetchTodaySessions = async () => {
     const r = await api.get("/sessions/today/");
-    setTodaySessions(filterActiveTodaySessions(r.data));
+    setTodaySessions(r.data);
   };
 
   const fetchPastSessions = async () => {
@@ -835,13 +826,40 @@ export default function LecturerDashboard() {
     setTimetableKey((p) => p + 1);
   };
 
+  const saveSemester = async () => {
+    if (!semesterStart) {
+      setSemesterMsg("Choose a semester start date.");
+      return;
+    }
+    setSemesterSaving(true);
+    setSemesterMsg("");
+    try {
+      const r = await api.post("/semester/", { semester_start: semesterStart });
+      const end = r.data.semester_end;
+      setSemesterMsg(
+        r.data.updated_count === 0
+          ? `${r.data.message} (${semesterStart} → ${end})`
+          : `${r.data.message} Semester: ${semesterStart} → ${end}.`,
+      );
+      fetchCourses();
+    } catch (err) {
+      setSemesterMsg(
+        err.response?.data?.error || "Failed to save semester dates.",
+      );
+    } finally {
+      setSemesterSaving(false);
+    }
+  };
+
   const uploadTimetable = async (e) => {
     const input = e.target;
     const file = input.files?.[0];
     if (!file) return;
 
-    if (!semesterStart) {
-      setTimetableMsg("Enter semester start date first.");
+    const start =
+      semesterStart || courses.find((c) => c.semester_start)?.semester_start;
+    if (!start) {
+      setTimetableMsg("Set and save semester start date first.");
       resetTimetableFileInput(input);
       return;
     }
@@ -850,16 +868,17 @@ export default function LecturerDashboard() {
     setTimetableMsg("");
     const fd = new FormData();
     fd.append("image", file);
-    fd.append("semester_start", semesterStart);
+    fd.append("semester_start", start);
 
     try {
       const r = await api.post("/upload-timetable/", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       const end = r.data.semester_end;
+      if (!semesterStart) setSemesterStart(start);
       setTimetableMsg(
         end
-          ? `${r.data.message} Semester: ${semesterStart} → ${end}.`
+          ? `${r.data.message} Semester: ${start} → ${end}.`
           : r.data.message,
       );
       fetchCourses();
@@ -896,6 +915,9 @@ export default function LecturerDashboard() {
     e.preventDefault();
     try {
       await api.post("/courses/create/", newCourse);
+      if (semesterStart) {
+        await api.post("/semester/", { semester_start: semesterStart });
+      }
       setNewCourse({ code: "", name: "", section: "" });
       setShowAddCourseForm(false);
       fetchCourses();
@@ -1012,23 +1034,42 @@ export default function LecturerDashboard() {
   };
 
   const resetSemester = async () => {
-    if (
-      !window.confirm(
-        "Delete ALL courses, sessions, and attendance? This cannot be undone.",
-      )
-    )
-      return;
-    if (!window.confirm("Are you absolutely sure?")) return;
+    const n = courses.length;
+    const confirmed = window.confirm(
+      "Reset semester?\n\n" +
+        "This will permanently delete:\n" +
+        `• ${n} course(s) and all enrolled students\n` +
+        "• All class sessions and attendance records\n" +
+        "• All pending and sent warning/bar alerts\n\n" +
+        "This cannot be undone.\n\n" +
+        "Click OK to delete everything, or Cancel to keep your data.",
+    );
+    if (!confirmed) return;
+
     try {
-      await api.delete("/reset-semester/");
+      const r = await api.delete("/reset-semester/");
+      if (qrInterval) clearInterval(qrInterval);
       setSelectedCourse(null);
       setSessions([]);
+      setTodaySessions([]);
+      setPastSessions([]);
+      setCoursePastSessions([]);
       setStudentList([]);
+      setAlerts([]);
+      setSelectedAlert(null);
       setQrImage(null);
-      fetchCourses();
-      fetchTodaySessions();
-    } catch {
-      alert("Failed to reset.");
+      setQrToken(null);
+      setSemesterStart("");
+      setSemesterMsg("");
+      setTimetableMsg("");
+      setActiveTab("overview");
+      await fetchCourses();
+      await fetchTodaySessions();
+      await fetchPastSessions();
+      await fetchAlerts();
+      alert(r.data?.message || "Semester reset complete.");
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to reset semester.");
     }
   };
 
@@ -1122,6 +1163,7 @@ export default function LecturerDashboard() {
           <span style={S.userPill}>👨‍🏫 {user?.username}</span>
           <span style={{ fontSize: "12px", color: "#a09d97" }}>{today}</span>
           <button
+            type="button"
             onClick={resetSemester}
             style={{ ...S.btn("ghost"), color: "#c13515", fontSize: "12px" }}
           >
@@ -1213,10 +1255,10 @@ export default function LecturerDashboard() {
 
               <hr style={S.divider} />
 
-              {/* Timetable import */}
+              {/* Semester dates */}
               <div style={S.panel}>
                 <div style={S.panelHeader}>
-                  <p style={S.panelTitle}>📤 Import Timetable</p>
+                  <p style={S.panelTitle}>📅 Semester dates</p>
                 </div>
                 <div style={S.panelBody}>
                   <p
@@ -1226,13 +1268,10 @@ export default function LecturerDashboard() {
                       margin: "0 0 12px",
                     }}
                   >
-                    Upload your timetable image/PDF — AI will extract all
-                    courses and schedule 14 class weeks (7 weeks, 1-week
-                    holiday break, then 7 more weeks). The semester start you
-                    enter sets the window; the end date is 15 calendar weeks
-                    later (including the break).
-                    Bar letters trigger only when attendance falls below 80%
-                    within that semester.
+                    Set when the semester starts (no timetable upload needed).
+                    Applies to all your courses. End date is 15 calendar weeks
+                    later (14 teaching weeks including a 1-week break). Bar
+                    letters use attendance within this window.
                   </p>
                   <div
                     style={{
@@ -1248,7 +1287,10 @@ export default function LecturerDashboard() {
                         style={{ ...S.input, width: "160px" }}
                         type="date"
                         value={semesterStart}
-                        onChange={(e) => setSemesterStart(e.target.value)}
+                        onChange={(e) => {
+                          setSemesterStart(e.target.value);
+                          setSemesterMsg("");
+                        }}
                       />
                       {semesterStart && (
                         <p
@@ -1258,25 +1300,62 @@ export default function LecturerDashboard() {
                             margin: "4px 0 0",
                           }}
                         >
-                          Semester ends:{" "}
-                          {(() => {
-                            const d = new Date(`${semesterStart}T12:00:00`);
-                            d.setDate(d.getDate() + 15 * 7 - 1);
-                            return d.toISOString().slice(0, 10);
-                          })()}
+                          Semester ends: {computeSemesterEnd(semesterStart)}
                         </p>
                       )}
                     </div>
-                    <div style={S.formRow}>
-                      <label style={S.label}>Timetable file</label>
-                      <input
-                        key={timetableKey}
-                        type="file"
-                        accept="image/*,.pdf,.docx,.doc"
-                        onChange={uploadTimetable}
-                        style={{ fontSize: "13px", color: "#4a4845" }}
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      style={S.btn("primary")}
+                      onClick={saveSemester}
+                      disabled={semesterSaving || !semesterStart}
+                    >
+                      {semesterSaving ? "Saving…" : "Save semester dates"}
+                    </button>
+                  </div>
+                  {semesterMsg && (
+                    <p
+                      style={{
+                        color: semesterMsg.includes("Failed")
+                          ? "#a32d2d"
+                          : "#3b6d11",
+                        fontSize: "13px",
+                        margin: "8px 0 0",
+                      }}
+                    >
+                      {semesterMsg}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Timetable import */}
+              <div style={S.panel}>
+                <div style={S.panelHeader}>
+                  <p style={S.panelTitle}>📤 Import Timetable</p>
+                </div>
+                <div style={S.panelBody}>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#6b6963",
+                      margin: "0 0 12px",
+                    }}
+                  >
+                    Optional: upload your timetable image/PDF — AI will extract
+                    courses and schedule 14 class weeks. Use the semester start
+                    above (save it first if you have not imported a timetable
+                    yet).
+                  </p>
+                  <div style={S.formRow}>
+                    <label style={S.label}>Timetable file</label>
+                    <input
+                      key={timetableKey}
+                      type="file"
+                      accept="image/*,.pdf,.docx,.doc"
+                      onChange={uploadTimetable}
+                      style={{ fontSize: "13px", color: "#4a4845" }}
+                    />
                   </div>
                   {uploading && (
                     <p
@@ -1326,6 +1405,17 @@ export default function LecturerDashboard() {
                           </p>
                           <p style={S.sessionTime}>
                             {session.start_time} – {session.end_time}
+                            {session.is_active === false && (
+                              <span
+                                style={{
+                                  marginLeft: "8px",
+                                  color: "#a09d97",
+                                  fontSize: "12px",
+                                }}
+                              >
+                                (ended — finalize when ready)
+                              </span>
+                            )}
                           </p>
                           {finalizeMsg[session.id] && (
                             <p
@@ -1343,6 +1433,7 @@ export default function LecturerDashboard() {
                           <button
                             style={S.btn("secondary")}
                             onClick={() => startQR(session.id)}
+                            disabled={session.is_active === false}
                           >
                             📱 Generate QR
                           </button>
@@ -1770,6 +1861,17 @@ export default function LecturerDashboard() {
                                 <p style={S.sessionCourse}>{session.date}</p>
                                 <p style={S.sessionTime}>
                                   {session.start_time} – {session.end_time}
+                                  {session.is_active === false && (
+                                    <span
+                                      style={{
+                                        marginLeft: "8px",
+                                        color: "#a09d97",
+                                        fontSize: "12px",
+                                      }}
+                                    >
+                                      (ended)
+                                    </span>
+                                  )}
                                 </p>
                                 {finalizeMsg[session.id] && (
                                   <p
@@ -1787,6 +1889,7 @@ export default function LecturerDashboard() {
                                 <button
                                   style={S.btn("secondary")}
                                   onClick={() => startQR(session.id)}
+                                  disabled={session.is_active === false}
                                 >
                                   📱 QR
                                 </button>

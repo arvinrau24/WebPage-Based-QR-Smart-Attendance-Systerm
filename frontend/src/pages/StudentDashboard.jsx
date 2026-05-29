@@ -1,64 +1,65 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import api from '../api/axios'
+import { T } from '../styles/studentTheme'
+
+const steps = [
+  {
+    title: 'Open the QR code',
+    text: 'Your lecturer will display a QR code at the start of class.',
+  },
+  {
+    title: 'Scan with your phone',
+    text: 'Use your camera or QR scanner — it opens the check-in page automatically.',
+  },
+  {
+    title: 'Confirm your details',
+    text: 'Enter your name and matric number, then submit. Done in under a minute.',
+  },
+]
 
 export default function StudentDashboard() {
-  const [token, setToken] = useState('')
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
-  const navigate = useNavigate()
-
-  useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (!stored) navigate('/login')
-  }, [])
-
-  const markAttendance = async () => {
-    setMessage('')
-    setError('')
-    try {
-      const res = await api.post('/mark/', { token })
-      setMessage(res.data.message)
-    } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong')
-    }
-  }
-
-  const logout = () => {
-    api.post('/auth/logout/')
-    localStorage.removeItem('user')
-    navigate('/login')
-  }
-
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h2>🎓 Student Attendance</h2>
-        <button onClick={logout} style={styles.logoutBtn}>Logout</button>
-      </div>
-      <div style={styles.card}>
-        <p>Enter the QR token shown by your lecturer:</p>
-        <input
-          style={styles.input}
-          placeholder="Paste QR token here"
-          value={token}
-          onChange={e => setToken(e.target.value)}
-        />
-        <button style={styles.button} onClick={markAttendance}>Mark Attendance</button>
-        {message && <p style={styles.success}>{message}</p>}
-        {error && <p style={styles.error}>{error}</p>}
+    <div style={T.page}>
+      <div style={T.wrap}>
+        <header style={T.header}>
+          <div style={T.logo}>◈</div>
+          <h1 style={T.brand}>Smart Attendance</h1>
+          <p style={T.tagline}>How to mark your attendance</p>
+        </header>
+
+        <div style={T.card}>
+          <h2 style={T.cardTitle}>Student check-in</h2>
+          <p style={T.cardSubtitle}>
+            You do not need to sign in. Attendance is marked by scanning the session QR code in class.
+          </p>
+
+          <ol style={T.steps}>
+            {steps.map((step, i) => (
+              <li key={step.title} style={T.step}>
+                <span style={T.stepNum}>{i + 1}</span>
+                <div>
+                  <strong style={{ display: 'block', color: '#1a1917', marginBottom: '2px' }}>
+                    {step.title}
+                  </strong>
+                  {step.text}
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <div style={T.alert('info')}>
+            <span>
+              If the QR link does not open, ask your lecturer to generate a fresh code — codes expire after a few minutes.
+            </span>
+          </div>
+        </div>
+
+        <p style={T.footer}>
+          Lecturers sign in at the{' '}
+          <a href="/login" style={{ color: '#1a1917', fontWeight: 600 }}>
+            lecturer portal
+          </a>
+          .
+        </p>
       </div>
     </div>
   )
-}
-
-const styles = {
-  container: { maxWidth: '600px', margin: '0 auto', padding: '2rem', fontFamily: 'sans-serif' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  card: { background: '#f9f9f9', padding: '1.5rem', borderRadius: '12px', border: '1px solid #eee' },
-  input: { width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '14px', boxSizing: 'border-box', marginBottom: '12px' },
-  button: { width: '100%', padding: '10px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', cursor: 'pointer' },
-  success: { color: 'green', textAlign: 'center' },
-  error: { color: 'red', textAlign: 'center' },
-  logoutBtn: { background: '#ef4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }
 }
