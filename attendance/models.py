@@ -18,6 +18,7 @@ class Course(models.Model):
     )
     semester_start = models.DateField(null=True, blank=True)
     semester_end = models.DateField(null=True, blank=True)
+    geofence_polygon = models.JSONField(default=list, blank=True, help_text="Faculty boundary polygon coordinates [(lat, lon), ...]")
 
     def __str__(self):
         return f"{self.code} - {self.name}"
@@ -51,6 +52,7 @@ class AttendanceRecord(models.Model):
         ('present', 'Present'),
         ('absent', 'Absent'),
         ('excused', 'Excused'),
+        ('pending', 'Pending Approval'),
     )
     session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='attendance_records')
     student = models.ForeignKey(

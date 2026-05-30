@@ -290,19 +290,27 @@ def _session_roster(session, request=None):
     for student in enrolled:
         record = records_by_matric.get(student.matric_number)
         excuse = excuses_by_matric.get(student.matric_number)
+        is_pending = record and record.status == 'pending'
         roster.append({
+            'id': record.id if record else None,
             'matric_number': student.matric_number,
             'full_name': student.full_name,
             'section': student.section or '',
             'status': record.status if record else 'absent',
             'scanned_at': record.scanned_at if record else None,
             'gps_verified': record.gps_verified if record else False,
+            'latitude': record.latitude if record else None,
+            'longitude': record.longitude if record else None,
+            'is_pending': is_pending,
             'excuse': (
                 AlertExcuseSerializer(excuse, context={'request': request}).data
                 if excuse
                 else None
             ),
         })
+
+    # Sort to show pending attendances first
+    roster.sort(key=lambda x: (not x['is_pending'], x['full_name']))
     return roster
 
 
@@ -379,21 +387,27 @@ def mark_attendance(request):
     if not profile:
         return Response({'error': f'Matric number {matric_number} is not enrolled in this course.'}, status=400)
 
-    # GPS verification
+    # GPS verification with geofence
     gps_verified = False
-    if latitude and longitude:
-        from math import radians, sin, cos, sqrt, atan2
-        building_lat = 2.3132493083489556
-        building_lng = 102.31827936415627
-        R = 6371000
+    attendance_status = 'pending'
 
-        lat1, lon1 = radians(building_lat), radians(building_lng)
-        lat2, lon2 = radians(float(latitude)), radians(float(longitude))
-        dlat = lat2 - lat1
-        dlon = lon2 - lon1
-        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-        distance = R * 2 * atan2(sqrt(a), sqrt(1-a))
-        gps_verified = distance <= 50
+    if latitude and longitude:
+        try:
+            lat = float(latitude)
+            lon = float(longitude)
+
+            # Check if course has geofence polygon
+            if course.geofence_polygon:
+                from alerts.geofencing import is_point_in_polygon
+                gps_verified = is_point_in_polygon(lat, lon, course.geofence_polygon)
+                # If inside geofence, mark as present; if outside, mark as pending
+                attendance_status = 'present' if gps_verified else 'pending'
+            else:
+                # No geofence set, default to present
+                gps_verified = True
+                attendance_status = 'present'
+        except (ValueError, TypeError):
+            attendance_status = 'pending'
 
     # Check if already marked
     if AttendanceRecord.objects.filter(session=session, matric_number=matric_number).exists():
@@ -401,9 +415,9 @@ def mark_attendance(request):
 
     AttendanceRecord.objects.create(
         session=session,
-        full_name=profile.full_name,  # use the name from StudentProfile, not self-reported
+        full_name=profile.full_name,
         matric_number=matric_number,
-        status='present',
+        status=attendance_status,
         scanned_at=timezone.now(),
         latitude=float(latitude) if latitude else None,
         longitude=float(longitude) if longitude else None,
@@ -412,6 +426,8 @@ def mark_attendance(request):
 
     if gps_verified:
         return Response({'message': f'Attendance marked successfully! ✅'}, status=201)
+    elif attendance_status == 'pending':
+        return Response({'message': f'Attendance flagged ⏳ — Lecturer will review your location.'}, status=201)
     else:
         return Response({'message': f'Attendance marked ⚠️ but GPS could not verify your location.'}, status=201)
 
@@ -926,3 +942,48 @@ def finalize_session(request, session_id):
         'alerts_pending_review': len(alerts_triggered),
         'alerted_students': alerts_triggered,
     })
+
+
+# --- APPROVE/REJECT PENDING ATTENDANCE ---
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def approve_pending_attendance(request):
+    """Lecturer approves flagged attendance (marks as present)."""
+    attendance_id = request.data.get('attendance_id')
+    try:
+        record = AttendanceRecord.objects.get(id=attendance_id)
+    except AttendanceRecord.DoesNotExist:
+        return Response({'error': 'Attendance record not found'}, status=404)
+
+    if record.session.course.lecturer != request.user:
+        return Response({'error': 'Only the course lecturer can approve attendance'}, status=403)
+
+    if record.status != 'pending':
+        return Response({'error': 'Only pending attendance can be approved'}, status=400)
+
+    record.status = 'present'
+    record.save(update_fields=['status'])
+
+    return Response({'message': f'Attendance approved for {record.matric_number}'}, status=200)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reject_pending_attendance(request):
+    """Lecturer rejects flagged attendance (marks as absent)."""
+    attendance_id = request.data.get('attendance_id')
+    try:
+        record = AttendanceRecord.objects.get(id=attendance_id)
+    except AttendanceRecord.DoesNotExist:
+        return Response({'error': 'Attendance record not found'}, status=404)
+
+    if record.session.course.lecturer != request.user:
+        return Response({'error': 'Only the course lecturer can reject attendance'}, status=403)
+
+    if record.status != 'pending':
+        return Response({'error': 'Only pending attendance can be rejected'}, status=400)
+
+    record.status = 'absent'
+    record.save(update_fields=['status'])
+
+    return Response({'message': f'Attendance rejected for {record.matric_number}'}, status=200)

@@ -29,6 +29,8 @@ urlpatterns = [
 
     # Other
     path('mark/', views.mark_attendance),
+    path('attendance/approve/', views.approve_pending_attendance),
+    path('attendance/reject/', views.reject_pending_attendance),
     path('semester/', views.set_semester),
     path('upload-timetable/', views.upload_timetable),
     path('upload-student-list/', views.upload_student_list),

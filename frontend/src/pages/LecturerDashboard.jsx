@@ -458,6 +458,7 @@ export default function LecturerDashboard() {
     phone: "",
     email: "",
   });
+  const [expandedSections, setExpandedSections] = useState({});
 
   // QR
   const [qrImage, setQrImage] = useState(null);
@@ -505,6 +506,7 @@ export default function LecturerDashboard() {
   const [pastSessionRoster, setPastSessionRoster] = useState([]);
   const [pastExcuseReasons, setPastExcuseReasons] = useState({});
   const [pastExcusingMatric, setPastExcusingMatric] = useState(null);
+  const [pastApprovingMatric, setPastApprovingMatric] = useState(null);
   const [pastClassMsg, setPastClassMsg] = useState("");
 
   const pendingAlerts = alerts.filter((a) => !a.is_sent);
@@ -693,6 +695,7 @@ export default function LecturerDashboard() {
     setPastSessionRoster([]);
     setPastClassMsg("");
     setPastExcusingMatric(null);
+    setPastApprovingMatric(null);
   };
 
   const excusePastStudent = async (matric, fileInput) => {
@@ -727,6 +730,50 @@ export default function LecturerDashboard() {
       setPastExcusingMatric(null);
     }
   };
+
+  const approvePendingAttendance = async (attendance_id, matric) => {
+    if (!selectedPastSession || !attendance_id) return;
+    setPastApprovingMatric(matric);
+    setPastClassMsg("");
+    try {
+      const r = await api.post(`/attendance/approve/`, { attendance_id });
+      setPastClassMsg(r.data.message || "Attendance approved ✅");
+      setPastSessionRoster((prev) =>
+        prev.map((row) =>
+          row.matric_number === matric ? { ...row, status: "present", is_pending: false } : row
+        )
+      );
+      fetchAlerts();
+      if (selectedCourse) fetchCoursePastSessions(selectedCourse.id);
+    } catch (err) {
+      setPastClassMsg(err.response?.data?.error || "Failed to approve attendance");
+    } finally {
+      setPastApprovingMatric(null);
+    }
+  };
+
+  const rejectPendingAttendance = async (attendance_id, matric) => {
+    if (!selectedPastSession || !attendance_id) return;
+    if (!window.confirm("Mark this student as absent?")) return;
+    setPastApprovingMatric(matric);
+    setPastClassMsg("");
+    try {
+      const r = await api.post(`/attendance/reject/`, { attendance_id });
+      setPastClassMsg(r.data.message || "Attendance marked absent ✓");
+      setPastSessionRoster((prev) =>
+        prev.map((row) =>
+          row.matric_number === matric ? { ...row, status: "absent", is_pending: false } : row
+        )
+      );
+      fetchAlerts();
+      if (selectedCourse) fetchCoursePastSessions(selectedCourse.id);
+    } catch (err) {
+      setPastClassMsg(err.response?.data?.error || "Failed to reject attendance");
+    } finally {
+      setPastApprovingMatric(null);
+    }
+  };
+
   const fetchAttendanceCount = async (sid) => {
     const r = await api.get(`/sessions/${sid}/attendance/`);
     setAttendanceCount(r.data.length);
@@ -1096,6 +1143,7 @@ export default function LecturerDashboard() {
   const statusLabel = (status) => {
     if (status === "present") return { text: "Present", color: "#2d6a4f" };
     if (status === "excused") return { text: "Excused", color: "#2d6a4f" };
+    if (status === "pending") return { text: "Pending Review", color: "#e8a500" };
     return { text: "Absent", color: "#a32d2d" };
   };
 
@@ -2189,94 +2237,152 @@ export default function LecturerDashboard() {
                         + Add first student
                       </button>
                     </div>
-                  ) : (
-                    <table style={S.table}>
-                      <thead>
-                        <tr>
-                          <th style={S.th}>#</th>
-                          <th style={S.th}>Matric No.</th>
-                          <th style={S.th}>Full Name</th>
-                          <th style={S.th}>Section</th>
-                          <th style={S.th}>Email</th>
-                          <th style={S.th}>Phone</th>
-                          <th style={{ ...S.th, textAlign: "right" }}>
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {studentList.map((s, i) => (
-                          <tr
-                            key={s.matric_number}
+                  ) : (() => {
+                    const grouped = {};
+                    studentList.forEach((s) => {
+                      const sec = s.section || "No Section";
+                      if (!grouped[sec]) grouped[sec] = [];
+                      grouped[sec].push(s);
+                    });
+                    const sections = Object.keys(grouped).sort();
+
+                    return (
+                      <div style={S.panelBody}>
+                        {sections.map((section) => (
+                          <div
+                            key={section}
                             style={{
-                              background: i % 2 === 0 ? "#fff" : "#faf9f7",
+                              marginBottom: "1rem",
+                              border: "1px solid #e0dcd6",
+                              borderRadius: "4px",
+                              overflow: "hidden",
                             }}
                           >
-                            <td
+                            <button
+                              onClick={() =>
+                                setExpandedSections((prev) => ({
+                                  ...prev,
+                                  [section]: !prev[section],
+                                }))
+                              }
                               style={{
-                                ...S.td,
-                                color: "#a09d97",
-                                width: "36px",
-                              }}
-                            >
-                              {i + 1}
-                            </td>
-                            <td
-                              style={{
-                                ...S.td,
+                                width: "100%",
+                                padding: "0.75rem 1.25rem",
+                                background: "#f5f4f2",
+                                border: "none",
+                                textAlign: "left",
+                                cursor: "pointer",
                                 fontWeight: 600,
-                                fontFamily: "monospace",
-                                fontSize: "12px",
+                                fontSize: "14px",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                color: "#2d2520",
+                                transition: "background 0.2s",
                               }}
+                              onMouseOver={(e) =>
+                                (e.currentTarget.style.background = "#ede8e0")
+                              }
+                              onMouseOut={(e) =>
+                                (e.currentTarget.style.background = "#f5f4f2")
+                              }
                             >
-                              {s.matric_number}
-                            </td>
-                            <td style={S.td}>{s.full_name}</td>
-                            <td style={S.td}>
-                              <span style={s.section ? S.tag : {}}>
-                                {s.section || "—"}
+                              <span>
+                                {section} ({grouped[section].length} students)
                               </span>
-                            </td>
-                            <td
-                              style={{
-                                ...S.td,
-                                fontSize: "12px",
-                                color: "#6b6963",
-                              }}
-                            >
-                              {s.email || "—"}
-                            </td>
-                            <td
-                              style={{
-                                ...S.td,
-                                fontSize: "12px",
-                                color: "#6b6963",
-                              }}
-                            >
-                              {s.phone || "—"}
-                            </td>
-                            <td style={{ ...S.td, textAlign: "right" }}>
-                              <button
-                                style={{
-                                  ...S.btn("ghost"),
-                                  marginRight: "4px",
-                                }}
-                                onClick={() => openEditStudent(s)}
-                              >
-                                ✏️ Edit
-                              </button>
-                              <button
-                                style={S.btn("danger")}
-                                onClick={() => deleteStudent(s)}
-                              >
-                                🗑️
-                              </button>
-                            </td>
-                          </tr>
+                              <span style={{ fontSize: "12px" }}>
+                                {expandedSections[section] ? "▼" : "▶"}
+                              </span>
+                            </button>
+
+                            {expandedSections[section] && (
+                              <table style={{ ...S.table, marginBottom: 0 }}>
+                                <thead>
+                                  <tr>
+                                    <th style={S.th}>#</th>
+                                    <th style={S.th}>Matric No.</th>
+                                    <th style={S.th}>Full Name</th>
+                                    <th style={S.th}>Email</th>
+                                    <th style={S.th}>Phone</th>
+                                    <th style={{ ...S.th, textAlign: "right" }}>
+                                      Actions
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {grouped[section].map((s, i) => (
+                                    <tr
+                                      key={s.matric_number}
+                                      style={{
+                                        background:
+                                          i % 2 === 0 ? "#fff" : "#faf9f7",
+                                      }}
+                                    >
+                                      <td
+                                        style={{
+                                          ...S.td,
+                                          color: "#a09d97",
+                                          width: "36px",
+                                        }}
+                                      >
+                                        {i + 1}
+                                      </td>
+                                      <td
+                                        style={{
+                                          ...S.td,
+                                          fontWeight: 600,
+                                          fontFamily: "monospace",
+                                          fontSize: "12px",
+                                        }}
+                                      >
+                                        {s.matric_number}
+                                      </td>
+                                      <td style={S.td}>{s.full_name}</td>
+                                      <td
+                                        style={{
+                                          ...S.td,
+                                          fontSize: "12px",
+                                          color: "#6b6963",
+                                        }}
+                                      >
+                                        {s.email || "—"}
+                                      </td>
+                                      <td
+                                        style={{
+                                          ...S.td,
+                                          fontSize: "12px",
+                                          color: "#6b6963",
+                                        }}
+                                      >
+                                        {s.phone || "—"}
+                                      </td>
+                                      <td style={{ ...S.td, textAlign: "right" }}>
+                                        <button
+                                          style={{
+                                            ...S.btn("ghost"),
+                                            marginRight: "4px",
+                                          }}
+                                          onClick={() => openEditStudent(s)}
+                                        >
+                                          ✏️ Edit
+                                        </button>
+                                        <button
+                                          style={S.btn("danger")}
+                                          onClick={() => deleteStudent(s)}
+                                        >
+                                          🗑️
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
-                  )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </>
@@ -2508,6 +2614,92 @@ export default function LecturerDashboard() {
                 as excused (counts toward attendance).
               </p>
 
+              {/* Pending Attendances Section */}
+              {pastSessionRoster.some((r) => r.is_pending) && (
+                <div
+                  style={{
+                    marginBottom: "16px",
+                    padding: "12px",
+                    background: "#fff8f0",
+                    borderRadius: "8px",
+                    border: "1px solid #fde5d6",
+                  }}
+                >
+                  <p style={{ fontSize: "13px", fontWeight: 600, color: "#c97a0a", margin: "0 0 12px" }}>
+                    🚨 {pastSessionRoster.filter((r) => r.is_pending).length} student(s) flagged
+                    for GPS verification
+                  </p>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {pastSessionRoster
+                      .filter((r) => r.is_pending)
+                      .map((row) => (
+                        <div
+                          key={row.matric_number}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "10px",
+                            background: "#fff",
+                            borderRadius: "6px",
+                            border: "1px solid #fde5d6",
+                          }}
+                        >
+                          <div>
+                            <p
+                              style={{
+                                fontSize: "13px",
+                                fontWeight: 600,
+                                margin: "0",
+                                color: "#1a1917",
+                              }}
+                            >
+                              {row.matric_number} · {row.full_name}
+                            </p>
+                            <p style={{ fontSize: "12px", color: "#6b6963", margin: "4px 0 0" }}>
+                              {row.section ? `Section ${row.section} · ` : ""}
+                              GPS: {row.latitude && row.longitude
+                                ? `(${row.latitude.toFixed(4)}, ${row.longitude.toFixed(4)})`
+                                : "No location"}
+                            </p>
+                          </div>
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            <button
+                              type="button"
+                              style={{
+                                ...S.btn("green"),
+                                fontSize: "12px",
+                                padding: "6px 12px",
+                              }}
+                              disabled={pastApprovingMatric === row.matric_number}
+                              onClick={() =>
+                                approvePendingAttendance(row.id, row.matric_number)
+                              }
+                            >
+                              {pastApprovingMatric === row.matric_number ? "…" : "✓ Approve"}
+                            </button>
+                            <button
+                              type="button"
+                              style={{
+                                ...S.btn("danger"),
+                                fontSize: "12px",
+                                padding: "6px 12px",
+                              }}
+                              disabled={pastApprovingMatric === row.matric_number}
+                              onClick={() =>
+                                rejectPendingAttendance(row.id, row.matric_number)
+                              }
+                            >
+                              {pastApprovingMatric === row.matric_number ? "…" : "✕ Reject"}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
               {pastSessionRoster.length === 0 ? (
                 <p style={S.empty}>No enrolled students for this class.</p>
               ) : (
@@ -2522,7 +2714,9 @@ export default function LecturerDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pastSessionRoster.map((row) => {
+                    {pastSessionRoster
+                      .filter((r) => !r.is_pending)
+                      .map((row) => {
                       const st = statusLabel(row.status);
                       const canExcuse = row.status === "absent";
                       return (
