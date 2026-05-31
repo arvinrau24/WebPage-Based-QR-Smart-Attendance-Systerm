@@ -143,7 +143,7 @@ export default function Login() {
       navigate('/lecturer')
     } catch (err) {
       if (!err.response) {
-        setError('Cannot reach the server. Make sure the backend is running at http://127.0.0.1:8000')
+        setError('Cannot reach the server. Check that the backend is online and VITE_API_URL is set correctly.')
       } else {
         setError(err.response?.data?.error || 'Invalid username or password')
       }
@@ -174,7 +174,7 @@ export default function Login() {
       navigate('/lecturer')
     } catch (err) {
       if (!err.response) {
-        setError('Cannot reach the server. Make sure the backend is running at http://127.0.0.1:8000')
+        setError('Cannot reach the server. Check that the backend is online and VITE_API_URL is set correctly.')
       } else {
         setError(err.response?.data?.error || 'Could not create account')
       }

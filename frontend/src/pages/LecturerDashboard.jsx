@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
+import { API_URL, mediaUrl } from "../api/config";
 
 const S = {
   // Layout
@@ -510,11 +511,6 @@ export default function LecturerDashboard() {
   const [pastClassMsg, setPastClassMsg] = useState("");
 
   const pendingAlerts = alerts.filter((a) => !a.is_sent);
-  const mediaUrl = (path) => {
-    if (!path) return null;
-    if (path.startsWith("http")) return path;
-    return `http://127.0.0.1:8000${path}`;
-  };
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -863,7 +859,7 @@ export default function LecturerDashboard() {
   const exportExcel = (sessionId) => {
     const token = localStorage.getItem("token");
     window.open(
-      `http://127.0.0.1:8000/api/sessions/${sessionId}/export/?token=${token}`,
+      `${API_URL}/sessions/${sessionId}/export/?token=${token}`,
       "_blank",
     );
   };
