@@ -95,6 +95,37 @@ const S = {
     outline: 'none',
     background: '#faf9f7',
   },
+  passwordWrap: {
+    position: 'relative',
+    marginBottom: '16px',
+  },
+  passwordInput: {
+    width: '100%',
+    padding: '11px 44px 11px 14px',
+    borderRadius: '8px',
+    border: '1px solid #e8e6e1',
+    fontSize: '14px',
+    boxSizing: 'border-box',
+    outline: 'none',
+    background: '#faf9f7',
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: '4px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: '36px',
+    height: '36px',
+    padding: 0,
+    border: 'none',
+    borderRadius: '6px',
+    background: 'transparent',
+    color: '#6b6963',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   button: {
     width: '100%',
     padding: '12px',
@@ -120,6 +151,52 @@ const S = {
   scanLink: { color: '#1a1917', fontWeight: 600, textDecoration: 'none' },
 }
 
+function EyeIcon({ hidden }) {
+  if (hidden) {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+        <line x1="1" y1="1" x2="23" y2="23" />
+      </svg>
+    )
+  }
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function PasswordField({ label, value, onChange, show, onToggleShow, placeholder, autoComplete, minLength }) {
+  return (
+    <>
+      <label style={S.label}>{label}</label>
+      <div style={S.passwordWrap}>
+        <input
+          style={S.passwordInput}
+          type={show ? 'text' : 'password'}
+          placeholder={placeholder}
+          value={value}
+          onChange={onChange}
+          required
+          autoComplete={autoComplete}
+          minLength={minLength}
+        />
+        <button
+          type="button"
+          style={S.passwordToggle}
+          onClick={onToggleShow}
+          aria-label={show ? 'Hide password' : 'Show password'}
+        >
+          <EyeIcon hidden={show} />
+        </button>
+      </div>
+    </>
+  )
+}
+
 export default function Login() {
   const [mode, setMode] = useState('signin')
   const [loading, setLoading] = useState(false)
@@ -131,6 +208,9 @@ export default function Login() {
     password: '',
     password_confirm: '',
   })
+  const [showSignInPassword, setShowSignInPassword] = useState(false)
+  const [showSignUpPassword, setShowSignUpPassword] = useState(false)
+  const [showSignUpConfirm, setShowSignUpConfirm] = useState(false)
   const navigate = useNavigate()
 
   const handleSignIn = async (e) => {
@@ -203,10 +283,27 @@ export default function Login() {
 
         <div style={S.formSide}>
           <div style={S.tabs}>
-            <button type="button" style={S.tab(mode === 'signin')} onClick={() => { setMode('signin'); setError('') }}>
+            <button
+              type="button"
+              style={S.tab(mode === 'signin')}
+              onClick={() => {
+                setMode('signin')
+                setError('')
+                setShowSignUpPassword(false)
+                setShowSignUpConfirm(false)
+              }}
+            >
               Sign in
             </button>
-            <button type="button" style={S.tab(mode === 'signup')} onClick={() => { setMode('signup'); setError('') }}>
+            <button
+              type="button"
+              style={S.tab(mode === 'signup')}
+              onClick={() => {
+                setMode('signup')
+                setError('')
+                setShowSignInPassword(false)
+              }}
+            >
               Create account
             </button>
           </div>
@@ -226,14 +323,13 @@ export default function Login() {
                   required
                   autoComplete="username"
                 />
-                <label style={S.label}>Password</label>
-                <input
-                  style={S.input}
-                  type="password"
+                <PasswordField
+                  label="Password"
                   placeholder="Your password"
                   value={signIn.password}
                   onChange={(e) => setSignIn({ ...signIn, password: e.target.value })}
-                  required
+                  show={showSignInPassword}
+                  onToggleShow={() => setShowSignInPassword((v) => !v)}
                   autoComplete="current-password"
                 />
                 <button style={S.button} type="submit" disabled={loading}>
@@ -266,25 +362,23 @@ export default function Login() {
                   required
                   autoComplete="email"
                 />
-                <label style={S.label}>Password</label>
-                <input
-                  style={S.input}
-                  type="password"
+                <PasswordField
+                  label="Password"
                   placeholder="At least 8 characters"
                   value={signUp.password}
                   onChange={(e) => setSignUp({ ...signUp, password: e.target.value })}
-                  required
-                  minLength={8}
+                  show={showSignUpPassword}
+                  onToggleShow={() => setShowSignUpPassword((v) => !v)}
                   autoComplete="new-password"
+                  minLength={8}
                 />
-                <label style={S.label}>Confirm password</label>
-                <input
-                  style={S.input}
-                  type="password"
+                <PasswordField
+                  label="Confirm password"
                   placeholder="Repeat password"
                   value={signUp.password_confirm}
                   onChange={(e) => setSignUp({ ...signUp, password_confirm: e.target.value })}
-                  required
+                  show={showSignUpConfirm}
+                  onToggleShow={() => setShowSignUpConfirm((v) => !v)}
                   autoComplete="new-password"
                 />
                 <button style={S.button} type="submit" disabled={loading}>
