@@ -1,3 +1,6 @@
+# Link Postgres to the web service in Railway Variables:
+#   DATABASE_URL = ${{Postgres.DATABASE_URL}}
+
 [build]
 builder = "NIXPACKS"
 

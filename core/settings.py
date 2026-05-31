@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 import dj_database_url
 
@@ -66,14 +67,24 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-if os.getenv('DATABASE_URL'):
+_database_url = os.getenv('DATABASE_URL')
+_on_railway = bool(os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_PUBLIC_DOMAIN'))
+
+if _database_url:
     DATABASES = {
         'default': dj_database_url.config(
-            default=os.getenv('DATABASE_URL'),
+            default=_database_url,
             conn_max_age=600,
             ssl_require=not DEBUG,
         )
     }
+elif _on_railway:
+    raise ImproperlyConfigured(
+        'DATABASE_URL is not set on this Railway service. '
+        'In the web service Variables tab, add: '
+        'DATABASE_URL = ${{Postgres.DATABASE_URL}} '
+        '(use your Postgres service name if it is not "Postgres").'
+    )
 else:
     DATABASES = {
         'default': {
