@@ -131,16 +131,21 @@ ALERT_EXCUSE_ALLOWED_EXTENSIONS = {
 
 AUTH_USER_MODEL = 'accounts.User'
 
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+def _normalize_origin(url):
+    return url.strip().rstrip('/')
+
+
+FRONTEND_URL = _normalize_origin(os.getenv('FRONTEND_URL', 'http://localhost:5173'))
 
 CORS_ALLOWED_ORIGINS = [
     FRONTEND_URL,
+    'https://web-page-based-qr-smart-attendance.vercel.app',
     'http://localhost:5173',
     'http://localhost:5174',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
 ]
-CORS_ALLOWED_ORIGINS = list(dict.fromkeys(CORS_ALLOWED_ORIGINS))
+CORS_ALLOWED_ORIGINS = list(dict.fromkeys(_normalize_origin(o) for o in CORS_ALLOWED_ORIGINS if o))
 
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True

@@ -4,7 +4,23 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
+from django.db import IntegrityError
 from .serializers import RegisterSerializer, UserSerializer
+
+
+def _first_error_message(errors):
+    if not isinstance(errors, dict):
+        return str(errors)
+    for messages in errors.values():
+        if isinstance(messages, list) and messages:
+            return str(messages[0])
+        if isinstance(messages, dict):
+            nested = _first_error_message(messages)
+            if nested:
+                return nested
+        if messages:
+            return str(messages)
+    return 'Request failed.'
 
 
 @api_view(['POST'])
@@ -28,21 +44,28 @@ def register(request):
     payload = {k: v for k, v in request.data.items() if k != 'password_confirm'}
     payload['role'] = 'lecturer'
     serializer = RegisterSerializer(data=payload)
-    if serializer.is_valid():
+    if not serializer.is_valid():
+        return Response(
+            {'error': _first_error_message(serializer.errors)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
         user = serializer.save()
         token, _ = Token.objects.get_or_create(user=user)
+    except IntegrityError:
         return Response(
-            {'token': token.key, 'user': UserSerializer(user).data},
-            status=status.HTTP_201_CREATED,
+            {'error': 'Username or email is already in use.'},
+            status=status.HTTP_400_BAD_REQUEST,
         )
-    errors = serializer.errors
-    if isinstance(errors, dict):
-        first_key = next(iter(errors))
-        first_msg = errors[first_key]
-        if isinstance(first_msg, list):
-            first_msg = first_msg[0]
-        return Response({'error': str(first_msg)}, status=status.HTTP_400_BAD_REQUEST)
-    return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception:
+        return Response(
+            {'error': 'Could not create account. Please try again.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    return Response(
+        {'token': token.key, 'user': UserSerializer(user).data},
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(['POST'])

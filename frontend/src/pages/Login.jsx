@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
+import { getApiError } from '../api/errors'
 
 const S = {
   page: {
@@ -145,7 +146,7 @@ export default function Login() {
       if (!err.response) {
         setError('Cannot reach the server. Check that the backend is online and VITE_API_URL is set correctly.')
       } else {
-        setError(err.response?.data?.error || 'Invalid username or password')
+        setError(getApiError(err, 'Invalid username or password'))
       }
     } finally {
       setLoading(false)
@@ -176,7 +177,7 @@ export default function Login() {
       if (!err.response) {
         setError('Cannot reach the server. Check that the backend is online and VITE_API_URL is set correctly.')
       } else {
-        setError(err.response?.data?.error || 'Could not create account')
+        setError(getApiError(err, 'Could not create account'))
       }
     } finally {
       setLoading(false)
