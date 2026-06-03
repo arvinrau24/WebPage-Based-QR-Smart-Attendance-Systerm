@@ -5,8 +5,6 @@ from django.core.mail import send_mail
 from django.utils import timezone
 from attendance.models import AttendanceRecord, Session, StudentProfile
 from .models import Alert, AlertSessionExcuse
-
-SYSTEM_EMAIL = 'smartattendance.utem@gmail.com'
 ATTENDANCE_THRESHOLD = 80
 MIN_SESSIONS_FOR_BAR = 3
 MIN_CONSECUTIVE_FOR_WARNING = 3
@@ -274,15 +272,29 @@ Smart Attendance System — UTeM
 This is an automated message. Please do not reply.
 """
 
+    from_email = settings.DEFAULT_FROM_EMAIL
+    if not from_email:
+        return False, 'Email is not configured (set DEFAULT_FROM_EMAIL or EMAIL_HOST_USER).'
+
     try:
         send_mail(
             subject=subject,
             message=body,
-            from_email=SYSTEM_EMAIL,
+            from_email=from_email,
             recipient_list=[alert.student_email],
             fail_silently=False,
         )
         return True, None
+    except OSError as exc:
+        hint = ''
+        if os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_PUBLIC_DOMAIN'):
+            if not os.getenv('RESEND_API_KEY'):
+                hint = (
+                    ' Railway blocks outbound SMTP on Hobby/Trial plans. '
+                    'Set RESEND_API_KEY in Railway variables (see Resend.com) '
+                    'or upgrade to Railway Pro and redeploy.'
+                )
+        return False, f'Could not reach the mail server.{hint} ({exc})'
     except Exception as exc:
         return False, str(exc)
 
