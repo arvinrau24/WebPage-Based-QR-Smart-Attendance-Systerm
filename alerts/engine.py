@@ -288,10 +288,10 @@ This is an automated message. Please do not reply.
     except OSError as exc:
         hint = ''
         if os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_PUBLIC_DOMAIN'):
-            if not os.getenv('RESEND_API_KEY'):
+            if not os.getenv('BREVO_API_KEY'):
                 hint = (
-                    ' Railway blocks outbound SMTP on Hobby/Trial plans. '
-                    'Set RESEND_API_KEY in Railway variables (see Resend.com) '
+                    ' Railway blocks outbound SMTP. '
+                    'Set BREVO_API_KEY in Railway variables (see Brevo.com) '
                     'or upgrade to Railway Pro and redeploy.'
                 )
         return False, f'Could not reach the mail server.{hint} ({exc})'
