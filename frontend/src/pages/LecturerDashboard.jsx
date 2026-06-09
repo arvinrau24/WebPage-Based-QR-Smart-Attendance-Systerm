@@ -465,7 +465,7 @@ export default function LecturerDashboard() {
   const [qrImage, setQrImage] = useState(null);
   const [qrToken, setQrToken] = useState(null);
   const [qrInterval, setQrInterval] = useState(null);
-  const [qrCountdown, setQrCountdown] = useState(180);
+  const [qrCountdown, setQrCountdown] = useState(60);
   const [countSessionId, setCountSessionId] = useState(null);
   const [attendanceCount, setAttendanceCount] = useState(0);
 
@@ -532,9 +532,9 @@ export default function LecturerDashboard() {
 
   useEffect(() => {
     if (!qrImage) return;
-    setQrCountdown(180);
+    setQrCountdown(60);
     const t = setInterval(
-      () => setQrCountdown((p) => (p <= 1 ? 180 : p - 1)),
+      () => setQrCountdown((p) => (p <= 1 ? 60 : p - 1)),
       1000,
     );
     return () => clearInterval(t);
@@ -585,7 +585,9 @@ export default function LecturerDashboard() {
     if (!selectedAlert || selectedAlert.is_sent) return;
     const file = fileInput?.files?.[0];
     if (!file) {
-      setAlertActionMsg("Upload proof (MC, note, PDF, or image) to excuse this class.");
+      setAlertActionMsg(
+        "Upload proof (MC, note, PDF, or image) to excuse this class.",
+      );
       return;
     }
     const reasonType = excuseReasons[sessionId] || "mc";
@@ -611,7 +613,9 @@ export default function LecturerDashboard() {
       }
       if (fileInput) fileInput.value = "";
     } catch (err) {
-      setAlertActionMsg(err.response?.data?.error || "Failed to excuse session");
+      setAlertActionMsg(
+        err.response?.data?.error || "Failed to excuse session",
+      );
     } finally {
       setExcusingSessionId(null);
     }
@@ -698,7 +702,9 @@ export default function LecturerDashboard() {
     if (!selectedPastSession) return;
     const file = fileInput?.files?.[0];
     if (!file) {
-      setPastClassMsg("Upload proof (MC, note, PDF, or image) to mark as excused.");
+      setPastClassMsg(
+        "Upload proof (MC, note, PDF, or image) to mark as excused.",
+      );
       return;
     }
     const reasonType = pastExcuseReasons[matric] || "mc";
@@ -736,13 +742,17 @@ export default function LecturerDashboard() {
       setPastClassMsg(r.data.message || "Attendance approved ✅");
       setPastSessionRoster((prev) =>
         prev.map((row) =>
-          row.matric_number === matric ? { ...row, status: "present", is_pending: false } : row
-        )
+          row.matric_number === matric
+            ? { ...row, status: "present", is_pending: false }
+            : row,
+        ),
       );
       fetchAlerts();
       if (selectedCourse) fetchCoursePastSessions(selectedCourse.id);
     } catch (err) {
-      setPastClassMsg(err.response?.data?.error || "Failed to approve attendance");
+      setPastClassMsg(
+        err.response?.data?.error || "Failed to approve attendance",
+      );
     } finally {
       setPastApprovingMatric(null);
     }
@@ -758,13 +768,17 @@ export default function LecturerDashboard() {
       setPastClassMsg(r.data.message || "Attendance marked absent ✓");
       setPastSessionRoster((prev) =>
         prev.map((row) =>
-          row.matric_number === matric ? { ...row, status: "absent", is_pending: false } : row
-        )
+          row.matric_number === matric
+            ? { ...row, status: "absent", is_pending: false }
+            : row,
+        ),
       );
       fetchAlerts();
       if (selectedCourse) fetchCoursePastSessions(selectedCourse.id);
     } catch (err) {
-      setPastClassMsg(err.response?.data?.error || "Failed to reject attendance");
+      setPastClassMsg(
+        err.response?.data?.error || "Failed to reject attendance",
+      );
     } finally {
       setPastApprovingMatric(null);
     }
@@ -849,7 +863,7 @@ export default function LecturerDashboard() {
       setQrToken(r.data.token);
     };
     generate();
-    const iv = setInterval(generate, 180000);
+    const iv = setInterval(generate, 60000);
     setQrInterval(iv);
     fetchAttendanceCount(sessionId);
     const cv = setInterval(() => fetchAttendanceCount(sessionId), 10000);
@@ -920,9 +934,7 @@ export default function LecturerDashboard() {
       const end = r.data.semester_end;
       if (!semesterStart) setSemesterStart(start);
       setTimetableMsg(
-        end
-          ? `${r.data.message} Semester: ${start} → ${end}.`
-          : r.data.message,
+        end ? `${r.data.message} Semester: ${start} → ${end}.` : r.data.message,
       );
       fetchCourses();
       fetchTodaySessions();
@@ -1139,7 +1151,8 @@ export default function LecturerDashboard() {
   const statusLabel = (status) => {
     if (status === "present") return { text: "Present", color: "#2d6a4f" };
     if (status === "excused") return { text: "Excused", color: "#2d6a4f" };
-    if (status === "pending") return { text: "Pending Review", color: "#e8a500" };
+    if (status === "pending")
+      return { text: "Pending Review", color: "#e8a500" };
     return { text: "Absent", color: "#a32d2d" };
   };
 
@@ -1165,10 +1178,7 @@ export default function LecturerDashboard() {
         >
           View attendance
         </button>
-        <button
-          style={S.btn("ghost")}
-          onClick={() => exportExcel(session.id)}
-        >
+        <button style={S.btn("ghost")} onClick={() => exportExcel(session.id)}>
           📥 Export
         </button>
       </div>
@@ -1526,12 +1536,18 @@ export default function LecturerDashboard() {
                       sessions when class ends.
                     </p>
                   ) : (
-                    pastSessions.slice(0, 15).map((session) =>
-                      renderPastSessionRow(session, true),
-                    )
+                    pastSessions
+                      .slice(0, 15)
+                      .map((session) => renderPastSessionRow(session, true))
                   )}
                   {pastSessions.length > 15 && (
-                    <p style={{ fontSize: "12px", color: "#a09d97", marginTop: "8px" }}>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#a09d97",
+                        marginTop: "8px",
+                      }}
+                    >
                       Showing 15 most recent. Select a course for the full list.
                     </p>
                   )}
@@ -1620,13 +1636,22 @@ export default function LecturerDashboard() {
                 <div style={S.panel}>
                   <div style={S.panelHeader}>
                     <p style={S.panelTitle}>⚠️ Attendance alerts</p>
-                    <span style={S.badge("red")}>{pendingAlerts.length} pending</span>
+                    <span style={S.badge("red")}>
+                      {pendingAlerts.length} pending
+                    </span>
                   </div>
                   <div style={S.panelBody}>
-                    <p style={{ fontSize: "13px", color: "#6b6963", margin: "0 0 12px" }}>
-                      Click an alert to review missed classes. Upload MC or other proof
-                      to excuse a day (updates or removes pending alerts). Add an optional
-                      message, then send the email to the student.
+                    <p
+                      style={{
+                        fontSize: "13px",
+                        color: "#6b6963",
+                        margin: "0 0 12px",
+                      }}
+                    >
+                      Click an alert to review missed classes. Upload MC or
+                      other proof to excuse a day (updates or removes pending
+                      alerts). Add an optional message, then send the email to
+                      the student.
                     </p>
                     {alerts.map((a) => (
                       <div
@@ -1635,7 +1660,9 @@ export default function LecturerDashboard() {
                         tabIndex={0}
                         style={S.alertCard(a.alert_type)}
                         onClick={() => openAlertDetail(a)}
-                        onKeyDown={(e) => e.key === "Enter" && openAlertDetail(a)}
+                        onKeyDown={(e) =>
+                          e.key === "Enter" && openAlertDetail(a)
+                        }
                       >
                         <div
                           style={{
@@ -1646,7 +1673,13 @@ export default function LecturerDashboard() {
                             marginBottom: "6px",
                           }}
                         >
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                            }}
+                          >
                             <span
                               style={S.badge(
                                 a.alert_type === "bar" ? "red" : "amber",
@@ -1654,20 +1687,32 @@ export default function LecturerDashboard() {
                             >
                               {a.alert_type === "bar" ? "Bar" : "Warning"}
                             </span>
-                            <span style={{ fontSize: "12px", color: "#6b6963" }}>
+                            <span
+                              style={{ fontSize: "12px", color: "#6b6963" }}
+                            >
                               {a.course_code || `Course #${a.course}`}
                             </span>
                           </div>
-                          <span
-                            style={S.badge(a.is_sent ? "green" : "amber")}
-                          >
+                          <span style={S.badge(a.is_sent ? "green" : "amber")}>
                             {a.is_sent ? "Sent" : "Review"}
                           </span>
                         </div>
-                        <p style={{ fontSize: "14px", fontWeight: 600, margin: "0 0 4px" }}>
+                        <p
+                          style={{
+                            fontSize: "14px",
+                            fontWeight: 600,
+                            margin: "0 0 4px",
+                          }}
+                        >
                           {a.student_name || a.matric_number}
                         </p>
-                        <p style={{ fontSize: "12px", margin: 0, color: "#6b6963" }}>
+                        <p
+                          style={{
+                            fontSize: "12px",
+                            margin: 0,
+                            color: "#6b6963",
+                          }}
+                        >
                           {a.reason_label}
                           {a.consecutive_count
                             ? ` · ${a.consecutive_count} in a row`
@@ -1840,7 +1885,7 @@ export default function LecturerDashboard() {
                           margin: "0 0 12px",
                         }}
                       >
-                        Refreshes every 3 minutes
+                        Refreshes every 1 minutes
                       </p>
                       <img
                         src={qrImage}
@@ -2233,152 +2278,161 @@ export default function LecturerDashboard() {
                         + Add first student
                       </button>
                     </div>
-                  ) : (() => {
-                    const grouped = {};
-                    studentList.forEach((s) => {
-                      const sec = s.section || "No Section";
-                      if (!grouped[sec]) grouped[sec] = [];
-                      grouped[sec].push(s);
-                    });
-                    const sections = Object.keys(grouped).sort();
+                  ) : (
+                    (() => {
+                      const grouped = {};
+                      studentList.forEach((s) => {
+                        const sec = s.section || "No Section";
+                        if (!grouped[sec]) grouped[sec] = [];
+                        grouped[sec].push(s);
+                      });
+                      const sections = Object.keys(grouped).sort();
 
-                    return (
-                      <div style={S.panelBody}>
-                        {sections.map((section) => (
-                          <div
-                            key={section}
-                            style={{
-                              marginBottom: "1rem",
-                              border: "1px solid #e0dcd6",
-                              borderRadius: "4px",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <button
-                              onClick={() =>
-                                setExpandedSections((prev) => ({
-                                  ...prev,
-                                  [section]: !prev[section],
-                                }))
-                              }
+                      return (
+                        <div style={S.panelBody}>
+                          {sections.map((section) => (
+                            <div
+                              key={section}
                               style={{
-                                width: "100%",
-                                padding: "0.75rem 1.25rem",
-                                background: "#f5f4f2",
-                                border: "none",
-                                textAlign: "left",
-                                cursor: "pointer",
-                                fontWeight: 600,
-                                fontSize: "14px",
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                color: "#2d2520",
-                                transition: "background 0.2s",
+                                marginBottom: "1rem",
+                                border: "1px solid #e0dcd6",
+                                borderRadius: "4px",
+                                overflow: "hidden",
                               }}
-                              onMouseOver={(e) =>
-                                (e.currentTarget.style.background = "#ede8e0")
-                              }
-                              onMouseOut={(e) =>
-                                (e.currentTarget.style.background = "#f5f4f2")
-                              }
                             >
-                              <span>
-                                {section} ({grouped[section].length} students)
-                              </span>
-                              <span style={{ fontSize: "12px" }}>
-                                {expandedSections[section] ? "▼" : "▶"}
-                              </span>
-                            </button>
+                              <button
+                                onClick={() =>
+                                  setExpandedSections((prev) => ({
+                                    ...prev,
+                                    [section]: !prev[section],
+                                  }))
+                                }
+                                style={{
+                                  width: "100%",
+                                  padding: "0.75rem 1.25rem",
+                                  background: "#f5f4f2",
+                                  border: "none",
+                                  textAlign: "left",
+                                  cursor: "pointer",
+                                  fontWeight: 600,
+                                  fontSize: "14px",
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  color: "#2d2520",
+                                  transition: "background 0.2s",
+                                }}
+                                onMouseOver={(e) =>
+                                  (e.currentTarget.style.background = "#ede8e0")
+                                }
+                                onMouseOut={(e) =>
+                                  (e.currentTarget.style.background = "#f5f4f2")
+                                }
+                              >
+                                <span>
+                                  {section} ({grouped[section].length} students)
+                                </span>
+                                <span style={{ fontSize: "12px" }}>
+                                  {expandedSections[section] ? "▼" : "▶"}
+                                </span>
+                              </button>
 
-                            {expandedSections[section] && (
-                              <table style={{ ...S.table, marginBottom: 0 }}>
-                                <thead>
-                                  <tr>
-                                    <th style={S.th}>#</th>
-                                    <th style={S.th}>Matric No.</th>
-                                    <th style={S.th}>Full Name</th>
-                                    <th style={S.th}>Email</th>
-                                    <th style={S.th}>Phone</th>
-                                    <th style={{ ...S.th, textAlign: "right" }}>
-                                      Actions
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {grouped[section].map((s, i) => (
-                                    <tr
-                                      key={s.matric_number}
-                                      style={{
-                                        background:
-                                          i % 2 === 0 ? "#fff" : "#faf9f7",
-                                      }}
-                                    >
-                                      <td
-                                        style={{
-                                          ...S.td,
-                                          color: "#a09d97",
-                                          width: "36px",
-                                        }}
+                              {expandedSections[section] && (
+                                <table style={{ ...S.table, marginBottom: 0 }}>
+                                  <thead>
+                                    <tr>
+                                      <th style={S.th}>#</th>
+                                      <th style={S.th}>Matric No.</th>
+                                      <th style={S.th}>Full Name</th>
+                                      <th style={S.th}>Email</th>
+                                      <th style={S.th}>Phone</th>
+                                      <th
+                                        style={{ ...S.th, textAlign: "right" }}
                                       >
-                                        {i + 1}
-                                      </td>
-                                      <td
-                                        style={{
-                                          ...S.td,
-                                          fontWeight: 600,
-                                          fontFamily: "monospace",
-                                          fontSize: "12px",
-                                        }}
-                                      >
-                                        {s.matric_number}
-                                      </td>
-                                      <td style={S.td}>{s.full_name}</td>
-                                      <td
-                                        style={{
-                                          ...S.td,
-                                          fontSize: "12px",
-                                          color: "#6b6963",
-                                        }}
-                                      >
-                                        {s.email || "—"}
-                                      </td>
-                                      <td
-                                        style={{
-                                          ...S.td,
-                                          fontSize: "12px",
-                                          color: "#6b6963",
-                                        }}
-                                      >
-                                        {s.phone || "—"}
-                                      </td>
-                                      <td style={{ ...S.td, textAlign: "right" }}>
-                                        <button
-                                          style={{
-                                            ...S.btn("ghost"),
-                                            marginRight: "4px",
-                                          }}
-                                          onClick={() => openEditStudent(s)}
-                                        >
-                                          ✏️ Edit
-                                        </button>
-                                        <button
-                                          style={S.btn("danger")}
-                                          onClick={() => deleteStudent(s)}
-                                        >
-                                          🗑️
-                                        </button>
-                                      </td>
+                                        Actions
+                                      </th>
                                     </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
+                                  </thead>
+                                  <tbody>
+                                    {grouped[section].map((s, i) => (
+                                      <tr
+                                        key={s.matric_number}
+                                        style={{
+                                          background:
+                                            i % 2 === 0 ? "#fff" : "#faf9f7",
+                                        }}
+                                      >
+                                        <td
+                                          style={{
+                                            ...S.td,
+                                            color: "#a09d97",
+                                            width: "36px",
+                                          }}
+                                        >
+                                          {i + 1}
+                                        </td>
+                                        <td
+                                          style={{
+                                            ...S.td,
+                                            fontWeight: 600,
+                                            fontFamily: "monospace",
+                                            fontSize: "12px",
+                                          }}
+                                        >
+                                          {s.matric_number}
+                                        </td>
+                                        <td style={S.td}>{s.full_name}</td>
+                                        <td
+                                          style={{
+                                            ...S.td,
+                                            fontSize: "12px",
+                                            color: "#6b6963",
+                                          }}
+                                        >
+                                          {s.email || "—"}
+                                        </td>
+                                        <td
+                                          style={{
+                                            ...S.td,
+                                            fontSize: "12px",
+                                            color: "#6b6963",
+                                          }}
+                                        >
+                                          {s.phone || "—"}
+                                        </td>
+                                        <td
+                                          style={{
+                                            ...S.td,
+                                            textAlign: "right",
+                                          }}
+                                        >
+                                          <button
+                                            style={{
+                                              ...S.btn("ghost"),
+                                              marginRight: "4px",
+                                            }}
+                                            onClick={() => openEditStudent(s)}
+                                          >
+                                            ✏️ Edit
+                                          </button>
+                                          <button
+                                            style={S.btn("danger")}
+                                            onClick={() => deleteStudent(s)}
+                                          >
+                                            🗑️
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()
+                  )}
                 </div>
               )}
             </>
@@ -2588,12 +2642,19 @@ export default function LecturerDashboard() {
             <div style={S.modalHeader}>
               <div>
                 <p style={S.modalTitle}>Past class attendance</p>
-                <p style={{ fontSize: "13px", color: "#6b6963", margin: "4px 0 0" }}>
+                <p
+                  style={{
+                    fontSize: "13px",
+                    color: "#6b6963",
+                    margin: "4px 0 0",
+                  }}
+                >
                   {selectedPastSession.course_code
                     ? `${selectedPastSession.course_code} · `
                     : ""}
                   {formatSessionDate(selectedPastSession.date)}{" "}
-                  {selectedPastSession.start_time} – {selectedPastSession.end_time}
+                  {selectedPastSession.start_time} –{" "}
+                  {selectedPastSession.end_time}
                 </p>
               </div>
               <button
@@ -2605,9 +2666,15 @@ export default function LecturerDashboard() {
               </button>
             </div>
             <div style={S.modalBody}>
-              <p style={{ fontSize: "13px", color: "#6b6963", margin: "0 0 12px" }}>
-                For absent students, upload MC or a supporting document to mark them
-                as excused (counts toward attendance).
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "#6b6963",
+                  margin: "0 0 12px",
+                }}
+              >
+                For absent students, upload MC or a supporting document to mark
+                them as excused (counts toward attendance).
               </p>
 
               {/* Pending Attendances Section */}
@@ -2621,12 +2688,25 @@ export default function LecturerDashboard() {
                     border: "1px solid #fde5d6",
                   }}
                 >
-                  <p style={{ fontSize: "13px", fontWeight: 600, color: "#c97a0a", margin: "0 0 12px" }}>
-                    🚨 {pastSessionRoster.filter((r) => r.is_pending).length} student(s) flagged
-                    for GPS verification
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "#c97a0a",
+                      margin: "0 0 12px",
+                    }}
+                  >
+                    🚨 {pastSessionRoster.filter((r) => r.is_pending).length}{" "}
+                    student(s) flagged for GPS verification
                   </p>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                    }}
+                  >
                     {pastSessionRoster
                       .filter((r) => r.is_pending)
                       .map((row) => (
@@ -2653,9 +2733,16 @@ export default function LecturerDashboard() {
                             >
                               {row.matric_number} · {row.full_name}
                             </p>
-                            <p style={{ fontSize: "12px", color: "#6b6963", margin: "4px 0 0" }}>
+                            <p
+                              style={{
+                                fontSize: "12px",
+                                color: "#6b6963",
+                                margin: "4px 0 0",
+                              }}
+                            >
                               {row.section ? `Section ${row.section} · ` : ""}
-                              GPS: {row.latitude && row.longitude
+                              GPS:{" "}
+                              {row.latitude && row.longitude
                                 ? `(${row.latitude.toFixed(4)}, ${row.longitude.toFixed(4)})`
                                 : "No location"}
                             </p>
@@ -2668,12 +2755,19 @@ export default function LecturerDashboard() {
                                 fontSize: "12px",
                                 padding: "6px 12px",
                               }}
-                              disabled={pastApprovingMatric === row.matric_number}
+                              disabled={
+                                pastApprovingMatric === row.matric_number
+                              }
                               onClick={() =>
-                                approvePendingAttendance(row.id, row.matric_number)
+                                approvePendingAttendance(
+                                  row.id,
+                                  row.matric_number,
+                                )
                               }
                             >
-                              {pastApprovingMatric === row.matric_number ? "…" : "✓ Approve"}
+                              {pastApprovingMatric === row.matric_number
+                                ? "…"
+                                : "✓ Approve"}
                             </button>
                             <button
                               type="button"
@@ -2682,12 +2776,19 @@ export default function LecturerDashboard() {
                                 fontSize: "12px",
                                 padding: "6px 12px",
                               }}
-                              disabled={pastApprovingMatric === row.matric_number}
+                              disabled={
+                                pastApprovingMatric === row.matric_number
+                              }
                               onClick={() =>
-                                rejectPendingAttendance(row.id, row.matric_number)
+                                rejectPendingAttendance(
+                                  row.id,
+                                  row.matric_number,
+                                )
                               }
                             >
-                              {pastApprovingMatric === row.matric_number ? "…" : "✕ Reject"}
+                              {pastApprovingMatric === row.matric_number
+                                ? "…"
+                                : "✕ Reject"}
                             </button>
                           </div>
                         </div>
@@ -2713,86 +2814,118 @@ export default function LecturerDashboard() {
                     {pastSessionRoster
                       .filter((r) => !r.is_pending)
                       .map((row) => {
-                      const st = statusLabel(row.status);
-                      const canExcuse = row.status === "absent";
-                      return (
-                        <tr key={row.matric_number}>
-                          <td style={S.td}>{row.matric_number}</td>
-                          <td style={S.td}>{row.full_name}</td>
-                          <td style={S.td}>{row.section || "—"}</td>
-                          <td style={S.td}>
-                            <span style={{ color: st.color, fontWeight: 600 }}>
-                              {st.text}
-                            </span>
-                            {row.excuse?.proof_url && (
-                              <p style={{ margin: "4px 0 0", fontSize: "11px" }}>
-                                <a
-                                  href={mediaUrl(row.excuse.proof_url)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  style={{ color: "#185fa5" }}
-                                >
-                                  View proof
-                                </a>
-                              </p>
-                            )}
-                          </td>
-                          <td style={{ ...S.td, textAlign: "right" }}>
-                            {canExcuse ? (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: "6px",
-                                  alignItems: "flex-end",
-                                }}
+                        const st = statusLabel(row.status);
+                        const canExcuse = row.status === "absent";
+                        return (
+                          <tr key={row.matric_number}>
+                            <td style={S.td}>{row.matric_number}</td>
+                            <td style={S.td}>{row.full_name}</td>
+                            <td style={S.td}>{row.section || "—"}</td>
+                            <td style={S.td}>
+                              <span
+                                style={{ color: st.color, fontWeight: 600 }}
                               >
-                                <select
-                                  style={{ ...S.input, fontSize: "12px", width: "180px" }}
-                                  value={pastExcuseReasons[row.matric_number] || "mc"}
-                                  onChange={(e) =>
-                                    setPastExcuseReasons((prev) => ({
-                                      ...prev,
-                                      [row.matric_number]: e.target.value,
-                                    }))
-                                  }
-                                >
-                                  <option value="mc">Medical certificate (MC)</option>
-                                  <option value="written_note">Written note</option>
-                                  <option value="official_letter">Official letter</option>
-                                  <option value="other">Other document</option>
-                                </select>
-                                <input
-                                  type="file"
-                                  accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,image/*"
-                                  style={{ fontSize: "11px", maxWidth: "200px" }}
-                                  id={`past-excuse-${row.matric_number}`}
-                                />
-                                <button
-                                  type="button"
-                                  style={{ ...S.btn("green"), fontSize: "12px" }}
-                                  disabled={pastExcusingMatric === row.matric_number}
-                                  onClick={() => {
-                                    const el = document.getElementById(
-                                      `past-excuse-${row.matric_number}`,
-                                    );
-                                    excusePastStudent(row.matric_number, el);
+                                {st.text}
+                              </span>
+                              {row.excuse?.proof_url && (
+                                <p
+                                  style={{
+                                    margin: "4px 0 0",
+                                    fontSize: "11px",
                                   }}
                                 >
-                                  {pastExcusingMatric === row.matric_number
-                                    ? "Uploading…"
-                                    : "Upload & excuse"}
-                                </button>
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: "12px", color: "#a09d97" }}>
-                                —
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                                  <a
+                                    href={mediaUrl(row.excuse.proof_url)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{ color: "#185fa5" }}
+                                  >
+                                    View proof
+                                  </a>
+                                </p>
+                              )}
+                            </td>
+                            <td style={{ ...S.td, textAlign: "right" }}>
+                              {canExcuse ? (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "6px",
+                                    alignItems: "flex-end",
+                                  }}
+                                >
+                                  <select
+                                    style={{
+                                      ...S.input,
+                                      fontSize: "12px",
+                                      width: "180px",
+                                    }}
+                                    value={
+                                      pastExcuseReasons[row.matric_number] ||
+                                      "mc"
+                                    }
+                                    onChange={(e) =>
+                                      setPastExcuseReasons((prev) => ({
+                                        ...prev,
+                                        [row.matric_number]: e.target.value,
+                                      }))
+                                    }
+                                  >
+                                    <option value="mc">
+                                      Medical certificate (MC)
+                                    </option>
+                                    <option value="written_note">
+                                      Written note
+                                    </option>
+                                    <option value="official_letter">
+                                      Official letter
+                                    </option>
+                                    <option value="other">
+                                      Other document
+                                    </option>
+                                  </select>
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,image/*"
+                                    style={{
+                                      fontSize: "11px",
+                                      maxWidth: "200px",
+                                    }}
+                                    id={`past-excuse-${row.matric_number}`}
+                                  />
+                                  <button
+                                    type="button"
+                                    style={{
+                                      ...S.btn("green"),
+                                      fontSize: "12px",
+                                    }}
+                                    disabled={
+                                      pastExcusingMatric === row.matric_number
+                                    }
+                                    onClick={() => {
+                                      const el = document.getElementById(
+                                        `past-excuse-${row.matric_number}`,
+                                      );
+                                      excusePastStudent(row.matric_number, el);
+                                    }}
+                                  >
+                                    {pastExcusingMatric === row.matric_number
+                                      ? "Uploading…"
+                                      : "Upload & excuse"}
+                                  </button>
+                                </div>
+                              ) : (
+                                <span
+                                  style={{ fontSize: "12px", color: "#a09d97" }}
+                                >
+                                  —
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               )}
@@ -2842,10 +2975,7 @@ export default function LecturerDashboard() {
       {/* Alert detail modal */}
       {selectedAlert && (
         <div style={S.alertOverlay} onClick={closeAlertModal}>
-          <div
-            style={S.alertModal}
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div style={S.alertModal} onClick={(e) => e.stopPropagation()}>
             <div style={S.modalHeader}>
               <p style={S.modalTitle}>
                 {selectedAlert.alert_type === "bar"
@@ -2863,7 +2993,13 @@ export default function LecturerDashboard() {
             </div>
             <div style={S.modalBody}>
               <div style={{ marginBottom: "16px" }}>
-                <p style={{ fontSize: "16px", fontWeight: 600, margin: "0 0 4px" }}>
+                <p
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 600,
+                    margin: "0 0 4px",
+                  }}
+                >
                   {selectedAlert.student_name}
                 </p>
                 <p style={{ fontSize: "13px", color: "#6b6963", margin: 0 }}>
@@ -2898,9 +3034,8 @@ export default function LecturerDashboard() {
 
               {selectedAlert.consecutive_count > 0 && (
                 <p style={{ fontSize: "13px", margin: "16px 0 8px" }}>
-                  Missed{" "}
-                  <strong>{selectedAlert.consecutive_count}</strong> consecutive
-                  class(es)
+                  Missed <strong>{selectedAlert.consecutive_count}</strong>{" "}
+                  consecutive class(es)
                 </p>
               )}
               {selectedAlert.attendance_percentage != null && (
@@ -2911,7 +3046,7 @@ export default function LecturerDashboard() {
                 </p>
               )}
 
-              {(selectedAlert.excuses?.length > 0) && (
+              {selectedAlert.excuses?.length > 0 && (
                 <>
                   <p
                     style={{
@@ -2941,7 +3076,13 @@ export default function LecturerDashboard() {
                           Excused
                         </span>
                       </div>
-                      <p style={{ margin: "4px 0 0", color: "#6b6963", fontSize: "12px" }}>
+                      <p
+                        style={{
+                          margin: "4px 0 0",
+                          color: "#6b6963",
+                          fontSize: "12px",
+                        }}
+                      >
                         {ex.reason_label}
                         {ex.reason_note ? ` — ${ex.reason_note}` : ""}
                         {ex.proof_url && (
@@ -2963,7 +3104,7 @@ export default function LecturerDashboard() {
                 </>
               )}
 
-              {(selectedAlert.missed_sessions?.length > 0) && (
+              {selectedAlert.missed_sessions?.length > 0 && (
                 <>
                   <p
                     style={{
@@ -3017,8 +3158,12 @@ export default function LecturerDashboard() {
                             }
                           >
                             <option value="mc">Medical certificate (MC)</option>
-                            <option value="written_note">Written note / letter</option>
-                            <option value="official_letter">Official letter</option>
+                            <option value="written_note">
+                              Written note / letter
+                            </option>
+                            <option value="official_letter">
+                              Official letter
+                            </option>
                             <option value="other">Other document</option>
                           </select>
                           <input
@@ -3108,16 +3253,20 @@ export default function LecturerDashboard() {
                     disabled={alertSendLoading || !selectedAlert.student_email}
                     onClick={sendAlertToStudent}
                   >
-                    {alertSendLoading
-                      ? "Sending…"
-                      : "Send email to student"}
+                    {alertSendLoading ? "Sending…" : "Send email to student"}
                   </button>
                 )}
               </div>
               {!selectedAlert.student_email && !selectedAlert.is_sent && (
-                <p style={{ fontSize: "12px", color: "#c13515", marginTop: "8px" }}>
-                  Add the student&apos;s email via the student list upload or edit
-                  student details.
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#c13515",
+                    marginTop: "8px",
+                  }}
+                >
+                  Add the student&apos;s email via the student list upload or
+                  edit student details.
                 </p>
               )}
             </div>
